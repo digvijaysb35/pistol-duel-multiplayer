@@ -18,8 +18,8 @@ const ANGULAR_TRANSFER = 0.015;
 const ROTATION_DAMPING = 0.992;
 const LINEAR_DAMPING = 0.998;
 
-// 🔫 Reload tuning
-const RELOAD_TIME = 1000; // 1 second
+// 🔫 Bullet reload only
+const BULLET_RELOAD_TIME = 1000; // 1 second
 
 const WIDTH = 420;
 const HEIGHT = 640;
@@ -34,16 +34,23 @@ class Gun {
     this.angle = Math.random() * Math.PI * 2;
     this.av = 0;
     this.radius = 20;
-    this.lastShotTime = 0; // ⏱️ NEW
+
+    this.lastBulletTime = 0; // ⏱️ bullet-only cooldown
   }
 
-  canShoot() {
-    return Date.now() - this.lastShotTime >= RELOAD_TIME;
+  applyRecoil() {
+    const a = this.angle;
+    this.vx -= Math.cos(a) * RECOIL_FORCE;
+    this.vy -= Math.sin(a) * RECOIL_FORCE;
+    this.av -= (Math.random() - 0.5) * 0.06;
   }
 
-  shoot(bullets) {
-    this.lastShotTime = Date.now();
+  canFireBullet() {
+    return Date.now() - this.lastBulletTime >= BULLET_RELOAD_TIME;
+  }
 
+  fireBullet(bullets) {
+    this.lastBulletTime = Date.now();
     const a = this.angle;
 
     bullets.push({
@@ -53,10 +60,6 @@ class Gun {
       vy: Math.sin(a) * BULLET_SPEED,
       owner: this
     });
-
-    this.vx -= Math.cos(a) * RECOIL_FORCE;
-    this.vy -= Math.sin(a) * RECOIL_FORCE;
-    this.av -= (Math.random() - 0.5) * 0.06;
   }
 
   applyWallCollision(nx, ny) {
@@ -162,10 +165,13 @@ wss.on("connection", ws => {
 
       const gun = room.players[ws.player];
 
-      // 🔒 RELOAD CHECK
-      if (!gun.canShoot()) return;
+      // ✅ ALWAYS apply recoil
+      gun.applyRecoil();
 
-      gun.shoot(room.bullets);
+      // 🔫 bullet only if reloaded
+      if (gun.canFireBullet()) {
+        gun.fireBullet(room.bullets);
+      }
     }
 
     if (data.type === "rematch") {
