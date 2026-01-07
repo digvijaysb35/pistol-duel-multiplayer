@@ -7,86 +7,165 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
-
-// serve client files
 app.use(express.static("public"));
 
+// ================= PHYSICS CONSTANTS (SAME AS SINGLE PLAYER)
+const GRAVITY = 0.2;
+const RECOIL_FORCE = 4;
+const BULLET_SPEED = 9;
+const WALL_RESTITUTION = 0.85;
+const ANGULAR_TRANSFER = 0.015;
+const ROTATION_DAMPING = 0.992;
+const LINEAR_DAMPING = 0.998;
+
+const WIDTH = 420;
+const HEIGHT = 640;
+
+// ================= GAME OBJECTS
+class Gun {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vx = 0;
+    this.vy = 0;
+    this.angle = Math.random() * Math.PI * 2;
+    this.av = 0;
+    this.radius = 20;
+  }
+
+  shoot(bullets) {
+    bullets.push({
+      x: this.x + Math.cos(this.angle) * 32,
+      y: this.y + Math.sin(this.angle) * 32,
+      vx: Math.cos(this.angle) * BULLET_SPEED,
+      vy: Math.sin(this.angle) * BULLET_SPEED,
+      owner: this
+    });
+
+    this.vx -= Math.cos(this.angle) * RECOIL_FORCE;
+    this.vy -= Math.sin(this.angle) * RECOIL_FORCE;
+    this.av -= (Math.random() - 0.5) * 0.06;
+  }
+
+  applyWall(nx, ny) {
+    const dot = this.vx * nx + this.vy * ny;
+    if (dot < 0) {
+      this.vx -= 2 * dot * nx;
+      this.vy -= 2 * dot * ny;
+      this.vx *= WALL_RESTITUTION;
+      this.vy *= WALL_RESTITUTION;
+      this.av += dot * ANGULAR_TRANSFER;
+    }
+  }
+
+  update() {
+    this.vy += GRAVITY;
+
+    this.x += this.vx;
+    this.y += this.vy;
+    this.angle += this.av;
+
+    this.vx *= LINEAR_DAMPING;
+    this.vy *= LINEAR_DAMPING;
+    this.av *= ROTATION_DAMPING;
+
+    if (this.x - this.radius < 0) {
+      this.x = this.radius;
+      this.applyWall(1, 0);
+    }
+    if (this.x + this.radius > WIDTH) {
+      this.x = WIDTH - this.radius;
+      this.applyWall(-1, 0);
+    }
+    if (this.y - this.radius < 0) {
+      this.y = this.radius;
+      this.applyWall(0, 1);
+    }
+    if (this.y + this.radius > HEIGHT) {
+      this.y = HEIGHT - this.radius;
+      this.applyWall(0, -1);
+    }
+  }
+}
+
+// ================= ROOMS
 const rooms = {};
 
-function createGameState() {
+function createRoom() {
   return {
     players: {
-      blue: { x: 90, y: 500, vx: 0, vy: 0, angle: 0 },
-      white:{ x: 330, y: 500, vx: 0, vy: 0, angle: 0 }
+      blue: new Gun(90, HEIGHT - 120),
+      white: new Gun(WIDTH - 90, HEIGHT - 120)
     },
-    bullets: []
+    bullets: [],
+    clients: {}
   };
 }
 
+// ================= WEBSOCKET HANDLING
 wss.on("connection", ws => {
   ws.on("message", msg => {
     const data = JSON.parse(msg);
 
     if (data.type === "join") {
-      const room = data.room;
-      if (!rooms[room]) {
-        rooms[room] = { clients: [], state: createGameState() };
-      }
+      if (!rooms[data.room]) rooms[data.room] = createRoom();
 
-      if (rooms[room].clients.length >= 2) return;
+      const room = rooms[data.room];
+      if (Object.keys(room.clients).length >= 2) return;
 
-      ws.room = room;
-      ws.player = rooms[room].clients.length === 0 ? "blue" : "white";
-      rooms[room].clients.push(ws);
+      ws.room = data.room;
+      ws.player =
+        room.clients.blue ? "white" : "blue";
 
-      ws.send(JSON.stringify({ type: "joined", player: ws.player }));
+      room.clients[ws.player] = ws;
+
+      ws.send(JSON.stringify({
+        type: "joined",
+        player: ws.player
+      }));
     }
 
     if (data.type === "shoot") {
-      const state = rooms[ws.room].state;
-      const p = state.players[ws.player];
-
-      state.bullets.push({
-        x: p.x,
-        y: p.y,
-        vx: Math.cos(p.angle) * 9,
-        vy: Math.sin(p.angle) * 9,
-        owner: ws.player
-      });
-
-      p.vx -= Math.cos(p.angle) * 4;
-      p.vy -= Math.sin(p.angle) * 4;
+      const room = rooms[ws.room];
+      if (!room) return;
+      room.players[ws.player].shoot(room.bullets);
     }
   });
 });
 
-// physics loop
+// ================= MAIN PHYSICS LOOP
 setInterval(() => {
   Object.values(rooms).forEach(room => {
-    const s = room.state;
+    const { players, bullets } = room;
 
-    Object.values(s.players).forEach(p => {
-      p.vy += 0.2; // gravity (your chosen value)
-      p.x += p.vx;
-      p.y += p.vy;
+    players.blue.update();
+    players.white.update();
 
-      if (p.y > 600) {
-        p.y = 600;
-        p.vy *= -0.6;
-      }
-    });
-
-    s.bullets.forEach(b => {
+    bullets.forEach(b => {
       b.x += b.vx;
       b.y += b.vy;
     });
 
-    room.clients.forEach(c => {
-      c.send(JSON.stringify({ type: "state", state: s }));
+    // remove bullets outside
+    room.bullets = bullets.filter(
+      b => b.x > 0 && b.x < WIDTH && b.y > 0 && b.y < HEIGHT
+    );
+
+    const state = {
+      players: {
+        blue: players.blue,
+        white: players.white
+      },
+      bullets: room.bullets
+    };
+
+    Object.values(room.clients).forEach(ws => {
+      ws.send(JSON.stringify({ type: "state", state }));
     });
   });
-}, 33);
+}, 1000 / 60);
 
+// ================= START SERVER
 server.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log("Server running on", PORT);
 });
