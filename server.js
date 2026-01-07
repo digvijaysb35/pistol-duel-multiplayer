@@ -23,7 +23,7 @@ const LINEAR_DAMPING = 0.998;
 const HEAT_PER_SHOT = 1;
 const MAX_HEAT = 6;               // shots before overheat
 const COOL_RATE = 0.04;           // per frame
-const OVERHEAT_COOLDOWN = 6200;   // ms forced cooldown
+const OVERHEAT_COOLDOWN = 1000;   // ms forced cooldown
 
 const WIDTH = 420;
 const HEIGHT = 640;
