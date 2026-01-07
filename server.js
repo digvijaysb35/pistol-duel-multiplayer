@@ -9,7 +9,7 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
-// ================= PHYSICS (LOCKED + CLAMPED)
+// ================= PHYSICS (LOCKED)
 const GRAVITY = 0.02;
 const RECOIL_FORCE = 3.2;
 const BULLET_SPEED = 9;
@@ -19,9 +19,11 @@ const ANGULAR_TRANSFER = 0.015;
 const ROTATION_DAMPING = 0.992;
 const LINEAR_DAMPING = 0.998;
 
-// 🔒 Anti-spam clamps (KEY CHANGE)
-const MAX_SPEED = 7.5;
-const MAX_ANGULAR_SPEED = 0.22;
+// ================= HEAT SYSTEM (ANTI-SPAM)
+const HEAT_PER_SHOT = 1;
+const MAX_HEAT = 6;               // shots before overheat
+const COOL_RATE = 0.04;           // per frame
+const OVERHEAT_COOLDOWN = 1200;   // ms forced cooldown
 
 const WIDTH = 420;
 const HEIGHT = 640;
@@ -36,11 +38,31 @@ class Gun {
     this.angle = Math.random() * Math.PI * 2;
     this.av = 0;
     this.radius = 20;
+
+    // 🔥 heat state
+    this.heat = 0;
+    this.overheated = false;
+    this.overheatUntil = 0;
+  }
+
+  canShoot() {
+    if (!this.overheated) return true;
+
+    if (Date.now() >= this.overheatUntil) {
+      this.overheated = false;
+      this.heat = MAX_HEAT * 0.4; // resume partially cooled
+      return true;
+    }
+
+    return false;
   }
 
   shoot(bullets) {
+    if (!this.canShoot()) return;
+
     const a = this.angle;
 
+    // bullet
     bullets.push({
       x: this.x + Math.cos(a) * 32,
       y: this.y + Math.sin(a) * 32,
@@ -53,6 +75,14 @@ class Gun {
     this.vx -= Math.cos(a) * RECOIL_FORCE;
     this.vy -= Math.sin(a) * RECOIL_FORCE;
     this.av -= (Math.random() - 0.5) * 0.06;
+
+    // 🔥 heat increase
+    this.heat += HEAT_PER_SHOT;
+
+    if (this.heat >= MAX_HEAT) {
+      this.overheated = true;
+      this.overheatUntil = Date.now() + OVERHEAT_COOLDOWN;
+    }
   }
 
   applyWallCollision(nx, ny) {
@@ -80,21 +110,12 @@ class Gun {
     this.vy *= LINEAR_DAMPING;
     this.av *= ROTATION_DAMPING;
 
-    // ===== ENERGY CLAMP (ANTI-SPAM CORE) =====
-
-    // clamp linear speed
-    const speed = Math.hypot(this.vx, this.vy);
-    if (speed > MAX_SPEED) {
-      const s = MAX_SPEED / speed;
-      this.vx *= s;
-      this.vy *= s;
+    // 🔥 passive cooling
+    if (!this.overheated && this.heat > 0) {
+      this.heat = Math.max(0, this.heat - COOL_RATE);
     }
 
-    // clamp angular speed
-    if (this.av > MAX_ANGULAR_SPEED) this.av = MAX_ANGULAR_SPEED;
-    if (this.av < -MAX_ANGULAR_SPEED) this.av = -MAX_ANGULAR_SPEED;
-
-    // ===== WALLS =====
+    // walls
     if (this.x - this.radius < 0) {
       this.x = this.radius;
       this.applyWallCollision(1, 0);
@@ -143,8 +164,10 @@ function resetRoom(room) {
 
 // ================= HIT CHECK
 function hit(b, g) {
-  return Math.abs(b.x - g.x) < 20 &&
-         Math.abs(b.y - g.y) < 20;
+  return (
+    Math.abs(b.x - g.x) < 20 &&
+    Math.abs(b.y - g.y) < 20
+  );
 }
 
 // ================= WEBSOCKETS
@@ -155,13 +178,17 @@ wss.on("connection", ws => {
     if (data.type === "join") {
       if (!rooms[data.room]) rooms[data.room] = createRoom();
       const room = rooms[data.room];
+
       if (Object.keys(room.clients).length >= 2) return;
 
       ws.room = data.room;
       ws.player = room.clients.blue ? "white" : "blue";
       room.clients[ws.player] = ws;
 
-      ws.send(JSON.stringify({ type: "joined", player: ws.player }));
+      ws.send(JSON.stringify({
+        type: "joined",
+        player: ws.player
+      }));
     }
 
     if (data.type === "shoot") {
@@ -175,6 +202,7 @@ wss.on("connection", ws => {
       if (!room || !room.gameOver) return;
 
       room.rematchReady[ws.player] = true;
+
       if (room.rematchReady.blue && room.rematchReady.white) {
         resetRoom(room);
       }
@@ -197,12 +225,16 @@ setInterval(() => {
           room.gameOver = true;
           room.winner = "white";
         }
+
         if (b.owner !== room.players.white && hit(b, room.players.white)) {
           room.gameOver = true;
           room.winner = "blue";
         }
 
-        if (b.x < 0 || b.x > WIDTH || b.y < 0 || b.y > HEIGHT) {
+        if (
+          b.x < 0 || b.x > WIDTH ||
+          b.y < 0 || b.y > HEIGHT
+        ) {
           room.bullets.splice(i, 1);
         }
       });
@@ -216,9 +248,9 @@ setInterval(() => {
       rematchReady: room.rematchReady
     };
 
-    Object.values(room.clients).forEach(ws =>
-      ws.send(JSON.stringify({ type: "state", state }))
-    );
+    Object.values(room.clients).forEach(ws => {
+      ws.send(JSON.stringify({ type: "state", state }));
+    });
   });
 }, 1000 / 60);
 
