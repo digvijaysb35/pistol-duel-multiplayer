@@ -1,23 +1,44 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Pistol Duel Multiplayer</title>
-</head>
-<body>
 
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #555;
+  height: 100%;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  margin: auto;
+  background: #000;
+  border: 6px solid #777;
+  border-radius: 14px;
+}
+</style>
+</head>
+
+<body>
 <canvas id="game"></canvas>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-canvas.width = 420;
-canvas.height = 640;
 
-// 🔴 TEMP URL – WE WILL FIX THIS AFTER DEPLOY
+canvas.width = Math.min(innerWidth - 20, 420);
+canvas.height = Math.min(innerHeight - 20, 640);
+
+// 🔗 WebSocket (already correct on your side)
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
-let state = null;
+let gameState = null;
+let myPlayer = null;
 
 ws.onopen = () => {
   const room = prompt("Enter room code:");
@@ -26,35 +47,62 @@ ws.onopen = () => {
 
 ws.onmessage = e => {
   const data = JSON.parse(e.data);
-  if (data.type === "state") state = data.state;
+
+  if (data.type === "joined") {
+    myPlayer = data.player;
+  }
+
+  if (data.type === "state") {
+    gameState = data.state;
+  }
 };
 
 canvas.addEventListener("click", () => {
   ws.send(JSON.stringify({ type: "shoot" }));
 });
 
-function drawGun(p, color) {
+// 🔫 SAME GUN DRAWING AS SINGLE PLAYER
+function drawGun(g, color) {
   ctx.save();
-  ctx.translate(p.x, p.y);
+  ctx.translate(g.x, g.y);
+  ctx.rotate(g.angle);
+
   ctx.fillStyle = color;
+
+  // body
   ctx.fillRect(-18, -7, 36, 14);
+  // barrel
+  ctx.fillRect(18, -3, 14, 6);
+  // handle
+  ctx.fillRect(-6, 7, 10, 16);
+
   ctx.restore();
 }
 
-function loop() {
+function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (!state) return requestAnimationFrame(loop);
 
-  drawGun(state.players.blue, "#00aaff");
-  drawGun(state.players.white, "#fff");
+  if (!gameState) {
+    ctx.fillStyle = "#fff";
+    ctx.font = "20px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("Waiting for player…", canvas.width / 2, canvas.height / 2);
+    return;
+  }
 
-  state.bullets.forEach(b => {
-    ctx.fillStyle = "yellow";
+  drawGun(gameState.players.blue, "#00aaff");
+  drawGun(gameState.players.white, "#ffffff");
+
+  gameState.bullets.forEach(b => {
+    ctx.fillStyle = "#ff0";
     ctx.beginPath();
     ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
     ctx.fill();
   });
+}
 
+function loop() {
+  draw();
   requestAnimationFrame(loop);
 }
 
