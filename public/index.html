@@ -51,13 +51,13 @@ const rematchBtn = document.getElementById("rematch");
 canvas.width = Math.min(innerWidth - 20, 420);
 canvas.height = Math.min(innerHeight - 20, 640);
 
-// 🔗 WebSocket (FINAL)
+// 🔗 WebSocket
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
 let gameState = null;
 let myPlayer = null;
 
-// ================= AUDIO (ONLY SOUNDS, NO EFFECTS)
+// ================= AUDIO (SOUNDS ONLY)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function playShot() {
@@ -99,14 +99,9 @@ ws.onmessage = e => {
 
   if (data.type === "state") {
     if (gameState) {
-      if (data.state.bullets.length > gameState.bullets.length) {
-        playShot();
-      }
-      if (data.state.bullets.length < gameState.bullets.length) {
-        playHit();
-      }
+      if (data.state.bullets.length > gameState.bullets.length) playShot();
+      if (data.state.bullets.length < gameState.bullets.length) playHit();
     }
-
     gameState = data.state;
     if (!gameState.gameOver) rematchBtn.style.display = "none";
   }
@@ -115,7 +110,7 @@ ws.onmessage = e => {
 // ================= INPUT
 canvas.addEventListener("click", () => {
   if (!gameState || gameState.gameOver) return;
-  audioCtx.resume(); // required for mobile audio
+  audioCtx.resume();
   ws.send(JSON.stringify({ type: "shoot" }));
 });
 
@@ -124,7 +119,7 @@ rematchBtn.onclick = () => {
   rematchBtn.style.display = "none";
 };
 
-// ================= ORIGINAL COOL GUN LOOK (RESTORED)
+// ================= COOL GUN (UNCHANGED)
 function drawGun(g, baseColor) {
   ctx.save();
   ctx.translate(g.x, g.y);
@@ -133,29 +128,23 @@ function drawGun(g, baseColor) {
   const dark = baseColor === "#ffffff" ? "#ccc" : "#0077aa";
   const darker = baseColor === "#ffffff" ? "#aaa" : "#005577";
 
-  // main body
   ctx.fillStyle = baseColor;
   ctx.fillRect(-20, -8, 40, 16);
 
-  // top slide
   ctx.fillStyle = dark;
   ctx.fillRect(-18, -11, 36, 6);
 
-  // barrel
   ctx.fillStyle = darker;
   ctx.fillRect(20, -3, 16, 6);
 
-  // muzzle hole
   ctx.fillStyle = "#000";
   ctx.beginPath();
   ctx.arc(36, 0, 2, 0, Math.PI * 2);
   ctx.fill();
 
-  // handle / grip
   ctx.fillStyle = darker;
   ctx.fillRect(-8, 8, 12, 18);
 
-  // grip texture
   ctx.strokeStyle = "#000";
   ctx.lineWidth = 1;
   for (let i = 0; i < 4; i++) {
@@ -165,14 +154,6 @@ function drawGun(g, baseColor) {
     ctx.stroke();
   }
 
-  // trigger guard
-  ctx.strokeStyle = baseColor;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(4, 10, 6, Math.PI, Math.PI * 2);
-  ctx.stroke();
-
-  // highlight
   ctx.strokeStyle = "rgba(255,255,255,0.25)";
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -181,6 +162,33 @@ function drawGun(g, baseColor) {
   ctx.stroke();
 
   ctx.restore();
+}
+
+// ================= COOL BULLET DRAW (NEW)
+function drawBullet(b) {
+  const dx = b.vx * -1;
+  const dy = b.vy * -1;
+  const len = 4;
+
+  // motion streak (cheap)
+  ctx.strokeStyle = "rgba(255,200,50,0.6)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(b.x, b.y);
+  ctx.lineTo(b.x + dx * 0.5, b.y + dy * 0.5);
+  ctx.stroke();
+
+  // glow
+  ctx.fillStyle = "rgba(255,200,50,0.35)";
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // core
+  ctx.fillStyle = "#fff3a0";
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 2, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // ================= DRAW LOOP
@@ -198,12 +206,7 @@ function draw() {
   drawGun(gameState.players.blue, "#00aaff");
   drawGun(gameState.players.white, "#ffffff");
 
-  gameState.bullets.forEach(b => {
-    ctx.fillStyle = "#ff0";
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  });
+  gameState.bullets.forEach(drawBullet);
 
   if (gameState.gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.75)";
