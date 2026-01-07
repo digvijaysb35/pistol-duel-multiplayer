@@ -9,7 +9,7 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
-// ================= YOUR FINAL PHYSICS (UNCHANGED VALUES)
+// ================= FINAL PHYSICS (UNCHANGED)
 const GRAVITY = 0.02;
 const RECOIL_FORCE = 4;
 const BULLET_SPEED = 9;
@@ -21,7 +21,7 @@ const LINEAR_DAMPING = 0.998;
 const WIDTH = 420;
 const HEIGHT = 640;
 
-// ================= GAME CLASSES (NO CANVAS HERE)
+// ================= GAME CLASSES
 class Gun {
   constructor(x, y) {
     this.x = x;
@@ -51,14 +51,11 @@ class Gun {
 
   applyWallCollision(nx, ny) {
     const dot = this.vx * nx + this.vy * ny;
-
     if (dot < 0) {
       this.vx -= 2 * dot * nx;
       this.vy -= 2 * dot * ny;
-
       this.vx *= WALL_RESTITUTION;
       this.vy *= WALL_RESTITUTION;
-
       this.av += dot * ANGULAR_TRANSFER;
     }
   }
@@ -103,8 +100,18 @@ function createRoom() {
       white: new Gun(WIDTH - 90, HEIGHT - 120)
     },
     bullets: [],
-    clients: {}
+    clients: {},
+    gameOver: false,
+    winner: null
   };
+}
+
+// ================= HIT CHECK (YOUR LOGIC)
+function hit(b, g) {
+  return (
+    Math.abs(b.x - g.x) < 20 &&
+    Math.abs(b.y - g.y) < 20
+  );
 }
 
 // ================= WEBSOCKETS
@@ -130,35 +137,53 @@ wss.on("connection", ws => {
 
     if (data.type === "shoot") {
       const room = rooms[ws.room];
-      if (!room) return;
+      if (!room || room.gameOver) return;
       room.players[ws.player].shoot(room.bullets);
     }
   });
 });
 
-// ================= MAIN LOOP (SAME AS YOUR loop())
+// ================= MAIN LOOP
 setInterval(() => {
   Object.values(rooms).forEach(room => {
-    const { players, bullets } = room;
+    if (room.gameOver) return;
+
+    const { players } = room;
 
     players.blue.update();
     players.white.update();
 
-    bullets.forEach(b => {
+    room.bullets.forEach((b, i) => {
       b.x += b.vx;
       b.y += b.vy;
-    });
 
-    room.bullets = bullets.filter(
-      b => b.x > 0 && b.x < WIDTH && b.y > 0 && b.y < HEIGHT
-    );
+      // 🔥 HIT DETECTION (SERVER)
+      if (b.owner !== players.blue && hit(b, players.blue)) {
+        room.gameOver = true;
+        room.winner = "white";
+      }
+
+      if (b.owner !== players.white && hit(b, players.white)) {
+        room.gameOver = true;
+        room.winner = "blue";
+      }
+
+      if (
+        b.x < 0 || b.x > WIDTH ||
+        b.y < 0 || b.y > HEIGHT
+      ) {
+        room.bullets.splice(i, 1);
+      }
+    });
 
     const state = {
       players: {
         blue: players.blue,
         white: players.white
       },
-      bullets: room.bullets
+      bullets: room.bullets,
+      gameOver: room.gameOver,
+      winner: room.winner
     };
 
     Object.values(room.clients).forEach(ws => {
