@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pistol Duel Multiplayer</title>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = 420;
+canvas.height = 640;
+
+// 🔴 TEMP URL – WE WILL FIX THIS AFTER DEPLOY
+const ws = new WebSocket("wss://REPLACE_THIS.onrender.com");
+
+let state = null;
+
+ws.onopen = () => {
+  const room = prompt("Enter room code:");
+  ws.send(JSON.stringify({ type: "join", room }));
+};
+
+ws.onmessage = e => {
+  const data = JSON.parse(e.data);
+  if (data.type === "state") state = data.state;
+};
+
+canvas.addEventListener("click", () => {
+  ws.send(JSON.stringify({ type: "shoot" }));
+});
+
+function drawGun(p, color) {
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.fillStyle = color;
+  ctx.fillRect(-18, -7, 36, 14);
+  ctx.restore();
+}
+
+function loop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!state) return requestAnimationFrame(loop);
+
+  drawGun(state.players.blue, "#00aaff");
+  drawGun(state.players.white, "#fff");
+
+  state.bullets.forEach(b => {
+    ctx.fillStyle = "yellow";
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
