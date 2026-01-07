@@ -21,25 +21,43 @@ canvas {
   border: 6px solid #777;
   border-radius: 14px;
 }
+
+#rematch {
+  position: absolute;
+  top: 55%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 14px 26px;
+  font-size: 20px;
+  border-radius: 8px;
+  border: none;
+  background: #00aaff;
+  color: white;
+  display: none;
+}
 </style>
 </head>
 
 <body>
+
 <canvas id="game"></canvas>
+<button id="rematch">Rematch</button>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const rematchBtn = document.getElementById("rematch");
 
 canvas.width = Math.min(innerWidth - 20, 420);
 canvas.height = Math.min(innerHeight - 20, 640);
 
-// 🔗 WebSocket (already correct on your side)
+// 🔗 WebSocket (already set correctly on your repo)
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
 let gameState = null;
 let myPlayer = null;
 
+// ================= WEBSOCKET
 ws.onopen = () => {
   const room = prompt("Enter room code:");
   ws.send(JSON.stringify({ type: "join", room }));
@@ -54,14 +72,26 @@ ws.onmessage = e => {
 
   if (data.type === "state") {
     gameState = data.state;
+
+    // hide rematch button when new game starts
+    if (!gameState.gameOver) {
+      rematchBtn.style.display = "none";
+    }
   }
 };
 
+// ================= INPUT
 canvas.addEventListener("click", () => {
+  if (!gameState || gameState.gameOver) return;
   ws.send(JSON.stringify({ type: "shoot" }));
 });
 
-// 🔫 SAME GUN DRAWING AS SINGLE PLAYER
+rematchBtn.onclick = () => {
+  ws.send(JSON.stringify({ type: "rematch" }));
+  rematchBtn.style.display = "none";
+};
+
+// ================= DRAWING
 function drawGun(g, color) {
   ctx.save();
   ctx.translate(g.x, g.y);
@@ -90,15 +120,46 @@ function draw() {
     return;
   }
 
+  // guns
   drawGun(gameState.players.blue, "#00aaff");
   drawGun(gameState.players.white, "#ffffff");
 
+  // bullets
   gameState.bullets.forEach(b => {
     ctx.fillStyle = "#ff0";
     ctx.beginPath();
     ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
     ctx.fill();
   });
+
+  // game over overlay
+  if (gameState.gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "32px Arial";
+    ctx.textAlign = "center";
+
+    const text =
+      gameState.winner === myPlayer ? "YOU WIN" : "YOU LOSE";
+
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2 - 30);
+
+    rematchBtn.style.display = "block";
+
+    if (
+      gameState.rematchReady &&
+      !gameState.rematchReady[myPlayer]
+    ) {
+      ctx.font = "16px Arial";
+      ctx.fillText(
+        "Waiting for opponent…",
+        canvas.width / 2,
+        canvas.height / 2 + 20
+      );
+    }
+  }
 }
 
 function loop() {
@@ -108,5 +169,6 @@ function loop() {
 
 loop();
 </script>
+
 </body>
 </html>
