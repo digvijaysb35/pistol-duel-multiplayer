@@ -18,6 +18,9 @@ const ANGULAR_TRANSFER = 0.015;
 const ROTATION_DAMPING = 0.992;
 const LINEAR_DAMPING = 0.998;
 
+// 🔫 Reload tuning
+const RELOAD_TIME = 1000; // 1 second
+
 const WIDTH = 420;
 const HEIGHT = 640;
 
@@ -31,9 +34,16 @@ class Gun {
     this.angle = Math.random() * Math.PI * 2;
     this.av = 0;
     this.radius = 20;
+    this.lastShotTime = 0; // ⏱️ NEW
+  }
+
+  canShoot() {
+    return Date.now() - this.lastShotTime >= RELOAD_TIME;
   }
 
   shoot(bullets) {
+    this.lastShotTime = Date.now();
+
     const a = this.angle;
 
     bullets.push({
@@ -103,10 +113,7 @@ function createRoom() {
     clients: {},
     gameOver: false,
     winner: null,
-    rematchReady: {
-      blue: false,
-      white: false
-    }
+    rematchReady: { blue: false, white: false }
   };
 }
 
@@ -152,7 +159,13 @@ wss.on("connection", ws => {
     if (data.type === "shoot") {
       const room = rooms[ws.room];
       if (!room || room.gameOver) return;
-      room.players[ws.player].shoot(room.bullets);
+
+      const gun = room.players[ws.player];
+
+      // 🔒 RELOAD CHECK
+      if (!gun.canShoot()) return;
+
+      gun.shoot(room.bullets);
     }
 
     if (data.type === "rematch") {
@@ -161,10 +174,7 @@ wss.on("connection", ws => {
 
       room.rematchReady[ws.player] = true;
 
-      if (
-        room.rematchReady.blue &&
-        room.rematchReady.white
-      ) {
+      if (room.rematchReady.blue && room.rematchReady.white) {
         resetRoom(room);
       }
     }
@@ -174,7 +184,7 @@ wss.on("connection", ws => {
 // ================= MAIN LOOP
 setInterval(() => {
   Object.values(rooms).forEach(room => {
-    if (room.gameOver === false) {
+    if (!room.gameOver) {
       room.players.blue.update();
       room.players.white.update();
 
