@@ -9,8 +9,8 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
-// ================= PHYSICS CONSTANTS (SAME AS SINGLE PLAYER)
-const GRAVITY = 0.2;
+// ================= YOUR FINAL PHYSICS (UNCHANGED VALUES)
+const GRAVITY = 0.02;
 const RECOIL_FORCE = 4;
 const BULLET_SPEED = 9;
 const WALL_RESTITUTION = 0.85;
@@ -21,7 +21,7 @@ const LINEAR_DAMPING = 0.998;
 const WIDTH = 420;
 const HEIGHT = 640;
 
-// ================= GAME OBJECTS
+// ================= GAME CLASSES (NO CANVAS HERE)
 class Gun {
   constructor(x, y) {
     this.x = x;
@@ -34,26 +34,31 @@ class Gun {
   }
 
   shoot(bullets) {
+    const a = this.angle;
+
     bullets.push({
-      x: this.x + Math.cos(this.angle) * 32,
-      y: this.y + Math.sin(this.angle) * 32,
-      vx: Math.cos(this.angle) * BULLET_SPEED,
-      vy: Math.sin(this.angle) * BULLET_SPEED,
+      x: this.x + Math.cos(a) * 32,
+      y: this.y + Math.sin(a) * 32,
+      vx: Math.cos(a) * BULLET_SPEED,
+      vy: Math.sin(a) * BULLET_SPEED,
       owner: this
     });
 
-    this.vx -= Math.cos(this.angle) * RECOIL_FORCE;
-    this.vy -= Math.sin(this.angle) * RECOIL_FORCE;
+    this.vx -= Math.cos(a) * RECOIL_FORCE;
+    this.vy -= Math.sin(a) * RECOIL_FORCE;
     this.av -= (Math.random() - 0.5) * 0.06;
   }
 
-  applyWall(nx, ny) {
+  applyWallCollision(nx, ny) {
     const dot = this.vx * nx + this.vy * ny;
+
     if (dot < 0) {
       this.vx -= 2 * dot * nx;
       this.vy -= 2 * dot * ny;
+
       this.vx *= WALL_RESTITUTION;
       this.vy *= WALL_RESTITUTION;
+
       this.av += dot * ANGULAR_TRANSFER;
     }
   }
@@ -71,19 +76,19 @@ class Gun {
 
     if (this.x - this.radius < 0) {
       this.x = this.radius;
-      this.applyWall(1, 0);
+      this.applyWallCollision(1, 0);
     }
     if (this.x + this.radius > WIDTH) {
       this.x = WIDTH - this.radius;
-      this.applyWall(-1, 0);
+      this.applyWallCollision(-1, 0);
     }
     if (this.y - this.radius < 0) {
       this.y = this.radius;
-      this.applyWall(0, 1);
+      this.applyWallCollision(0, 1);
     }
     if (this.y + this.radius > HEIGHT) {
       this.y = HEIGHT - this.radius;
-      this.applyWall(0, -1);
+      this.applyWallCollision(0, -1);
     }
   }
 }
@@ -102,21 +107,19 @@ function createRoom() {
   };
 }
 
-// ================= WEBSOCKET HANDLING
+// ================= WEBSOCKETS
 wss.on("connection", ws => {
   ws.on("message", msg => {
     const data = JSON.parse(msg);
 
     if (data.type === "join") {
       if (!rooms[data.room]) rooms[data.room] = createRoom();
-
       const room = rooms[data.room];
+
       if (Object.keys(room.clients).length >= 2) return;
 
       ws.room = data.room;
-      ws.player =
-        room.clients.blue ? "white" : "blue";
-
+      ws.player = room.clients.blue ? "white" : "blue";
       room.clients[ws.player] = ws;
 
       ws.send(JSON.stringify({
@@ -133,7 +136,7 @@ wss.on("connection", ws => {
   });
 });
 
-// ================= MAIN PHYSICS LOOP
+// ================= MAIN LOOP (SAME AS YOUR loop())
 setInterval(() => {
   Object.values(rooms).forEach(room => {
     const { players, bullets } = room;
@@ -146,7 +149,6 @@ setInterval(() => {
       b.y += b.vy;
     });
 
-    // remove bullets outside
     room.bullets = bullets.filter(
       b => b.x > 0 && b.x < WIDTH && b.y > 0 && b.y < HEIGHT
     );
@@ -165,7 +167,7 @@ setInterval(() => {
   });
 }, 1000 / 60);
 
-// ================= START SERVER
+// ================= START
 server.listen(PORT, () => {
   console.log("Server running on", PORT);
 });
