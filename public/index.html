@@ -57,7 +57,7 @@ const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 let gameState = null;
 let myPlayer = null;
 
-// ================= AUDIO (SOUNDS ONLY)
+// ================= AUDIO (UNCHANGED)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function playShot() {
@@ -102,6 +102,7 @@ ws.onmessage = e => {
       if (data.state.bullets.length > gameState.bullets.length) playShot();
       if (data.state.bullets.length < gameState.bullets.length) playHit();
     }
+
     gameState = data.state;
     if (!gameState.gameOver) rematchBtn.style.display = "none";
   }
@@ -119,14 +120,16 @@ rematchBtn.onclick = () => {
   rematchBtn.style.display = "none";
 };
 
-// ================= COOL GUN (UNCHANGED)
+// ================= COOL GUN LOOK (BLUE + RED)
 function drawGun(g, baseColor) {
   ctx.save();
   ctx.translate(g.x, g.y);
   ctx.rotate(g.angle);
 
-  const dark = baseColor === "#ffffff" ? "#ccc" : "#0077aa";
-  const darker = baseColor === "#ffffff" ? "#aaa" : "#005577";
+  const dark =
+    baseColor === "#ff4444" ? "#cc3333" : "#0077aa";
+  const darker =
+    baseColor === "#ff4444" ? "#992222" : "#005577";
 
   ctx.fillStyle = baseColor;
   ctx.fillRect(-20, -8, 40, 16);
@@ -164,30 +167,11 @@ function drawGun(g, baseColor) {
   ctx.restore();
 }
 
-// ================= COOL BULLET DRAW (NEW)
+// ================= SIMPLE BULLET (COLOR BY OWNER)
 function drawBullet(b) {
-  const dx = b.vx * -1;
-  const dy = b.vy * -1;
-  const len = 4;
-
-  // motion streak (cheap)
-  ctx.strokeStyle = "rgba(255,200,50,0.6)";
-  ctx.lineWidth = 2;
+  ctx.fillStyle = b.owner === "blue" ? "#00aaff" : "#ff4444";
   ctx.beginPath();
-  ctx.moveTo(b.x, b.y);
-  ctx.lineTo(b.x + dx * 0.5, b.y + dy * 0.5);
-  ctx.stroke();
-
-  // glow
-  ctx.fillStyle = "rgba(255,200,50,0.35)";
-  ctx.beginPath();
-  ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
-  ctx.fill();
-
-  // core
-  ctx.fillStyle = "#fff3a0";
-  ctx.beginPath();
-  ctx.arc(b.x, b.y, 2, 0, Math.PI * 2);
+  ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -204,7 +188,7 @@ function draw() {
   }
 
   drawGun(gameState.players.blue, "#00aaff");
-  drawGun(gameState.players.white, "#ffffff");
+  drawGun(gameState.players.white, "#ff4444");
 
   gameState.bullets.forEach(drawBullet);
 
