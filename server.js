@@ -9,7 +9,7 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
-// ================= FINAL PHYSICS (UNCHANGED)
+// ================= FINAL PHYSICS (LOCKED)
 const GRAVITY = 0.02;
 const RECOIL_FORCE = 4;
 const BULLET_SPEED = 9;
@@ -17,9 +17,6 @@ const WALL_RESTITUTION = 0.85;
 const ANGULAR_TRANSFER = 0.015;
 const ROTATION_DAMPING = 0.992;
 const LINEAR_DAMPING = 0.998;
-
-// 🔫 Bullet reload only
-const BULLET_RELOAD_TIME = 1000; // 1 second
 
 const WIDTH = 420;
 const HEIGHT = 640;
@@ -34,23 +31,9 @@ class Gun {
     this.angle = Math.random() * Math.PI * 2;
     this.av = 0;
     this.radius = 20;
-
-    this.lastBulletTime = 0; // ⏱️ bullet-only cooldown
   }
 
-  applyRecoil() {
-    const a = this.angle;
-    this.vx -= Math.cos(a) * RECOIL_FORCE;
-    this.vy -= Math.sin(a) * RECOIL_FORCE;
-    this.av -= (Math.random() - 0.5) * 0.06;
-  }
-
-  canFireBullet() {
-    return Date.now() - this.lastBulletTime >= BULLET_RELOAD_TIME;
-  }
-
-  fireBullet(bullets) {
-    this.lastBulletTime = Date.now();
+  shoot(bullets) {
     const a = this.angle;
 
     bullets.push({
@@ -60,6 +43,11 @@ class Gun {
       vy: Math.sin(a) * BULLET_SPEED,
       owner: this
     });
+
+    // recoil
+    this.vx -= Math.cos(a) * RECOIL_FORCE;
+    this.vy -= Math.sin(a) * RECOIL_FORCE;
+    this.av -= (Math.random() - 0.5) * 0.06;
   }
 
   applyWallCollision(nx, ny) {
@@ -162,16 +150,7 @@ wss.on("connection", ws => {
     if (data.type === "shoot") {
       const room = rooms[ws.room];
       if (!room || room.gameOver) return;
-
-      const gun = room.players[ws.player];
-
-      // ✅ ALWAYS apply recoil
-      gun.applyRecoil();
-
-      // 🔫 bullet only if reloaded
-      if (gun.canFireBullet()) {
-        gun.fireBullet(room.bullets);
-      }
+      room.players[ws.player].shoot(room.bullets);
     }
 
     if (data.type === "rematch") {
