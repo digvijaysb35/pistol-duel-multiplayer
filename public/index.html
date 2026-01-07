@@ -51,13 +51,12 @@ const rematchBtn = document.getElementById("rematch");
 canvas.width = Math.min(innerWidth - 20, 420);
 canvas.height = Math.min(innerHeight - 20, 640);
 
-// 🔗 WebSocket
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
 let gameState = null;
 let myPlayer = null;
 
-// ================= AUDIO (UNCHANGED)
+// ================= AUDIO
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function playShot() {
@@ -102,7 +101,6 @@ ws.onmessage = e => {
       if (data.state.bullets.length > gameState.bullets.length) playShot();
       if (data.state.bullets.length < gameState.bullets.length) playHit();
     }
-
     gameState = data.state;
     if (!gameState.gameOver) rematchBtn.style.display = "none";
   }
@@ -120,54 +118,28 @@ rematchBtn.onclick = () => {
   rematchBtn.style.display = "none";
 };
 
-// ================= COOL GUN LOOK (BLUE + RED)
+// ================= GUN DRAW (BLUE / RED)
 function drawGun(g, baseColor) {
   ctx.save();
   ctx.translate(g.x, g.y);
   ctx.rotate(g.angle);
 
-  const dark =
-    baseColor === "#ff4444" ? "#cc3333" : "#0077aa";
-  const darker =
-    baseColor === "#ff4444" ? "#992222" : "#005577";
+  const dark = baseColor === "#ff4444" ? "#cc3333" : "#0077aa";
+  const darker = baseColor === "#ff4444" ? "#992222" : "#005577";
 
   ctx.fillStyle = baseColor;
   ctx.fillRect(-20, -8, 40, 16);
-
   ctx.fillStyle = dark;
   ctx.fillRect(-18, -11, 36, 6);
-
   ctx.fillStyle = darker;
   ctx.fillRect(20, -3, 16, 6);
-
-  ctx.fillStyle = "#000";
-  ctx.beginPath();
-  ctx.arc(36, 0, 2, 0, Math.PI * 2);
-  ctx.fill();
-
   ctx.fillStyle = darker;
   ctx.fillRect(-8, 8, 12, 18);
-
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(-6, 10 + i * 4);
-    ctx.lineTo(2, 10 + i * 4);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(-18, -6);
-  ctx.lineTo(16, -6);
-  ctx.stroke();
 
   ctx.restore();
 }
 
-// ================= SIMPLE BULLET (COLOR BY OWNER)
+// ================= SIMPLE BULLET
 function drawBullet(b) {
   ctx.fillStyle = b.owner === "blue" ? "#00aaff" : "#ff4444";
   ctx.beginPath();
@@ -203,7 +175,7 @@ function draw() {
     ctx.fillText(
       gameState.winner === myPlayer ? "YOU WIN" : "YOU LOSE",
       canvas.width / 2,
-      canvas.height / 2 - 30
+      canvas.height / 2
     );
 
     rematchBtn.style.display = "block";
