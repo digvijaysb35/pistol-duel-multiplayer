@@ -9,9 +9,15 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
-// ================= FINAL PHYSICS (LOCKED)
+// ================= FINAL PHYSICS (UPDATED)
 const GRAVITY = 0.02;
-const RECOIL_FORCE = 4;
+
+// 🔽 Recoil reduced by 20%
+const RECOIL_FORCE = 3.2;
+
+// 🔼 New upward kick per shot
+const UPWARD_KICK = 1.2;
+
 const BULLET_SPEED = 9;
 const WALL_RESTITUTION = 0.85;
 const ANGULAR_TRANSFER = 0.015;
@@ -36,6 +42,7 @@ class Gun {
   shoot(bullets) {
     const a = this.angle;
 
+    // bullet
     bullets.push({
       x: this.x + Math.cos(a) * 32,
       y: this.y + Math.sin(a) * 32,
@@ -44,9 +51,14 @@ class Gun {
       owner: this
     });
 
-    // recoil
+    // recoil (weaker)
     this.vx -= Math.cos(a) * RECOIL_FORCE;
     this.vy -= Math.sin(a) * RECOIL_FORCE;
+
+    // upward kick
+    this.vy -= UPWARD_KICK;
+
+    // rotation recoil
     this.av -= (Math.random() - 0.5) * 0.06;
   }
 
