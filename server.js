@@ -9,15 +9,19 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
-// ================= FINAL PHYSICS (STABLE)
+// ================= PHYSICS (LOCKED + CLAMPED)
 const GRAVITY = 0.02;
-const RECOIL_FORCE = 3.2; // reduced recoil (kept)
+const RECOIL_FORCE = 3.2;
 const BULLET_SPEED = 9;
 
 const WALL_RESTITUTION = 0.85;
 const ANGULAR_TRANSFER = 0.015;
 const ROTATION_DAMPING = 0.992;
 const LINEAR_DAMPING = 0.998;
+
+// 🔒 Anti-spam clamps (KEY CHANGE)
+const MAX_SPEED = 7.5;
+const MAX_ANGULAR_SPEED = 0.22;
 
 const WIDTH = 420;
 const HEIGHT = 640;
@@ -37,7 +41,6 @@ class Gun {
   shoot(bullets) {
     const a = this.angle;
 
-    // bullet
     bullets.push({
       x: this.x + Math.cos(a) * 32,
       y: this.y + Math.sin(a) * 32,
@@ -46,11 +49,9 @@ class Gun {
       owner: this
     });
 
-    // full recoil (original behavior)
+    // recoil
     this.vx -= Math.cos(a) * RECOIL_FORCE;
     this.vy -= Math.sin(a) * RECOIL_FORCE;
-
-    // rotation recoil
     this.av -= (Math.random() - 0.5) * 0.06;
   }
 
@@ -66,16 +67,34 @@ class Gun {
   }
 
   update() {
+    // gravity
     this.vy += GRAVITY;
 
+    // integrate
     this.x += this.vx;
     this.y += this.vy;
     this.angle += this.av;
 
+    // damping
     this.vx *= LINEAR_DAMPING;
     this.vy *= LINEAR_DAMPING;
     this.av *= ROTATION_DAMPING;
 
+    // ===== ENERGY CLAMP (ANTI-SPAM CORE) =====
+
+    // clamp linear speed
+    const speed = Math.hypot(this.vx, this.vy);
+    if (speed > MAX_SPEED) {
+      const s = MAX_SPEED / speed;
+      this.vx *= s;
+      this.vy *= s;
+    }
+
+    // clamp angular speed
+    if (this.av > MAX_ANGULAR_SPEED) this.av = MAX_ANGULAR_SPEED;
+    if (this.av < -MAX_ANGULAR_SPEED) this.av = -MAX_ANGULAR_SPEED;
+
+    // ===== WALLS =====
     if (this.x - this.radius < 0) {
       this.x = this.radius;
       this.applyWallCollision(1, 0);
@@ -124,10 +143,8 @@ function resetRoom(room) {
 
 // ================= HIT CHECK
 function hit(b, g) {
-  return (
-    Math.abs(b.x - g.x) < 20 &&
-    Math.abs(b.y - g.y) < 20
-  );
+  return Math.abs(b.x - g.x) < 20 &&
+         Math.abs(b.y - g.y) < 20;
 }
 
 // ================= WEBSOCKETS
@@ -138,17 +155,13 @@ wss.on("connection", ws => {
     if (data.type === "join") {
       if (!rooms[data.room]) rooms[data.room] = createRoom();
       const room = rooms[data.room];
-
       if (Object.keys(room.clients).length >= 2) return;
 
       ws.room = data.room;
       ws.player = room.clients.blue ? "white" : "blue";
       room.clients[ws.player] = ws;
 
-      ws.send(JSON.stringify({
-        type: "joined",
-        player: ws.player
-      }));
+      ws.send(JSON.stringify({ type: "joined", player: ws.player }));
     }
 
     if (data.type === "shoot") {
@@ -162,7 +175,6 @@ wss.on("connection", ws => {
       if (!room || !room.gameOver) return;
 
       room.rematchReady[ws.player] = true;
-
       if (room.rematchReady.blue && room.rematchReady.white) {
         resetRoom(room);
       }
@@ -185,16 +197,12 @@ setInterval(() => {
           room.gameOver = true;
           room.winner = "white";
         }
-
         if (b.owner !== room.players.white && hit(b, room.players.white)) {
           room.gameOver = true;
           room.winner = "blue";
         }
 
-        if (
-          b.x < 0 || b.x > WIDTH ||
-          b.y < 0 || b.y > HEIGHT
-        ) {
+        if (b.x < 0 || b.x > WIDTH || b.y < 0 || b.y > HEIGHT) {
           room.bullets.splice(i, 1);
         }
       });
@@ -208,9 +216,9 @@ setInterval(() => {
       rematchReady: room.rematchReady
     };
 
-    Object.values(room.clients).forEach(ws => {
-      ws.send(JSON.stringify({ type: "state", state }));
-    });
+    Object.values(room.clients).forEach(ws =>
+      ws.send(JSON.stringify({ type: "state", state }))
+    );
   });
 }, 1000 / 60);
 
