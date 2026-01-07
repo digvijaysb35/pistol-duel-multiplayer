@@ -102,11 +102,25 @@ function createRoom() {
     bullets: [],
     clients: {},
     gameOver: false,
-    winner: null
+    winner: null,
+    rematchReady: {
+      blue: false,
+      white: false
+    }
   };
 }
 
-// ================= HIT CHECK (YOUR LOGIC)
+function resetRoom(room) {
+  room.players.blue = new Gun(90, HEIGHT - 120);
+  room.players.white = new Gun(WIDTH - 90, HEIGHT - 120);
+  room.bullets = [];
+  room.gameOver = false;
+  room.winner = null;
+  room.rematchReady.blue = false;
+  room.rematchReady.white = false;
+}
+
+// ================= HIT CHECK
 function hit(b, g) {
   return (
     Math.abs(b.x - g.x) < 20 &&
@@ -140,50 +154,59 @@ wss.on("connection", ws => {
       if (!room || room.gameOver) return;
       room.players[ws.player].shoot(room.bullets);
     }
+
+    if (data.type === "rematch") {
+      const room = rooms[ws.room];
+      if (!room || !room.gameOver) return;
+
+      room.rematchReady[ws.player] = true;
+
+      if (
+        room.rematchReady.blue &&
+        room.rematchReady.white
+      ) {
+        resetRoom(room);
+      }
+    }
   });
 });
 
 // ================= MAIN LOOP
 setInterval(() => {
   Object.values(rooms).forEach(room => {
-    if (room.gameOver) return;
+    if (room.gameOver === false) {
+      room.players.blue.update();
+      room.players.white.update();
 
-    const { players } = room;
+      room.bullets.forEach((b, i) => {
+        b.x += b.vx;
+        b.y += b.vy;
 
-    players.blue.update();
-    players.white.update();
+        if (b.owner !== room.players.blue && hit(b, room.players.blue)) {
+          room.gameOver = true;
+          room.winner = "white";
+        }
 
-    room.bullets.forEach((b, i) => {
-      b.x += b.vx;
-      b.y += b.vy;
+        if (b.owner !== room.players.white && hit(b, room.players.white)) {
+          room.gameOver = true;
+          room.winner = "blue";
+        }
 
-      // 🔥 HIT DETECTION (SERVER)
-      if (b.owner !== players.blue && hit(b, players.blue)) {
-        room.gameOver = true;
-        room.winner = "white";
-      }
-
-      if (b.owner !== players.white && hit(b, players.white)) {
-        room.gameOver = true;
-        room.winner = "blue";
-      }
-
-      if (
-        b.x < 0 || b.x > WIDTH ||
-        b.y < 0 || b.y > HEIGHT
-      ) {
-        room.bullets.splice(i, 1);
-      }
-    });
+        if (
+          b.x < 0 || b.x > WIDTH ||
+          b.y < 0 || b.y > HEIGHT
+        ) {
+          room.bullets.splice(i, 1);
+        }
+      });
+    }
 
     const state = {
-      players: {
-        blue: players.blue,
-        white: players.white
-      },
+      players: room.players,
       bullets: room.bullets,
       gameOver: room.gameOver,
-      winner: room.winner
+      winner: room.winner,
+      rematchReady: room.rematchReady
     };
 
     Object.values(room.clients).forEach(ws => {
