@@ -9,14 +9,12 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
-// ================= FINAL PHYSICS (UPDATED)
+// ================= FINAL PHYSICS (REFINED)
 const GRAVITY = 0.02;
 
-// 🔽 Recoil reduced by 20%
-const RECOIL_FORCE = 3.2;
-
-// 🔼 New upward kick per shot
-const UPWARD_KICK = 1.2;
+// recoil tuning
+const RECOIL_FORCE = 3.2;   // 20% reduced
+const UPWARD_KICK = 1.2;    // controlled upward motion
 
 const BULLET_SPEED = 9;
 const WALL_RESTITUTION = 0.85;
@@ -51,14 +49,16 @@ class Gun {
       owner: this
     });
 
-    // recoil (weaker)
+    // 🔄 horizontal recoil only
     this.vx -= Math.cos(a) * RECOIL_FORCE;
-    this.vy -= Math.sin(a) * RECOIL_FORCE;
 
-    // upward kick
+    // ❌ NO downward recoil from shooting up
+    // this.vy -= Math.sin(a) * RECOIL_FORCE; (REMOVED)
+
+    // 🔼 controlled upward kick
     this.vy -= UPWARD_KICK;
 
-    // rotation recoil
+    // rotation recoil (unchanged)
     this.av -= (Math.random() - 0.5) * 0.06;
   }
 
