@@ -1,7 +1,16 @@
+const express = require("express");
+const http = require("http");
 const WebSocket = require("ws");
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
 const PORT = process.env.PORT || 3000;
 
-const wss = new WebSocket.Server({ port: PORT });
+// serve client files
+app.use(express.static("public"));
+
 const rooms = {};
 
 function createGameState() {
@@ -57,7 +66,7 @@ setInterval(() => {
     const s = room.state;
 
     Object.values(s.players).forEach(p => {
-      p.vy += 0.2; // gravity
+      p.vy += 0.2; // gravity (your chosen value)
       p.x += p.vx;
       p.y += p.vy;
 
@@ -78,4 +87,6 @@ setInterval(() => {
   });
 }, 33);
 
-console.log("Server running");
+server.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
