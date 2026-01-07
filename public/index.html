@@ -51,7 +51,7 @@ const rematchBtn = document.getElementById("rematch");
 canvas.width = Math.min(innerWidth - 20, 420);
 canvas.height = Math.min(innerHeight - 20, 640);
 
-// 🔗 WebSocket (already set correctly on your repo)
+// 🔗 WebSocket
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
 let gameState = null;
@@ -73,7 +73,6 @@ ws.onmessage = e => {
   if (data.type === "state") {
     gameState = data.state;
 
-    // hide rematch button when new game starts
     if (!gameState.gameOver) {
       rematchBtn.style.display = "none";
     }
