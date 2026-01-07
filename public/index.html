@@ -51,10 +51,14 @@ const rematchBtn = document.getElementById("rematch");
 canvas.width = Math.min(innerWidth - 20, 420);
 canvas.height = Math.min(innerHeight - 20, 640);
 
-// 🔗 WebSocket (already set correctly on your repo)
+// 🔗 WebSocket
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
-let gameState = null;
+// ================= STATE BUFFER (FOR INTERPOLATION)
+let previousState = null;
+let currentState = null;
+let lastStateTime = 0;
+
 let myPlayer = null;
 
 // ================= WEBSOCKET
@@ -71,10 +75,11 @@ ws.onmessage = e => {
   }
 
   if (data.type === "state") {
-    gameState = data.state;
+    previousState = currentState;
+    currentState = data.state;
+    lastStateTime = performance.now();
 
-    // hide rematch button when new game starts
-    if (!gameState.gameOver) {
+    if (!currentState.gameOver) {
       rematchBtn.style.display = "none";
     }
   }
@@ -82,7 +87,7 @@ ws.onmessage = e => {
 
 // ================= INPUT
 canvas.addEventListener("click", () => {
-  if (!gameState || gameState.gameOver) return;
+  if (!currentState || currentState.gameOver) return;
   ws.send(JSON.stringify({ type: "shoot" }));
 });
 
@@ -90,6 +95,26 @@ rematchBtn.onclick = () => {
   ws.send(JSON.stringify({ type: "rematch" }));
   rematchBtn.style.display = "none";
 };
+
+// ================= INTERPOLATION HELPERS
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function lerpAngle(a, b, t) {
+  let diff = b - a;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return a + diff * t;
+}
+
+function interpGun(prev, curr, t) {
+  return {
+    x: lerp(prev.x, curr.x, t),
+    y: lerp(prev.y, curr.y, t),
+    angle: lerpAngle(prev.angle, curr.angle, t)
+  };
+}
 
 // ================= DRAWING
 function drawGun(g, color) {
@@ -99,11 +124,8 @@ function drawGun(g, color) {
 
   ctx.fillStyle = color;
 
-  // body
   ctx.fillRect(-18, -7, 36, 14);
-  // barrel
   ctx.fillRect(18, -3, 14, 6);
-  // handle
   ctx.fillRect(-6, 7, 10, 16);
 
   ctx.restore();
@@ -112,7 +134,7 @@ function drawGun(g, color) {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  if (!gameState) {
+  if (!currentState) {
     ctx.fillStyle = "#fff";
     ctx.font = "20px Arial";
     ctx.textAlign = "center";
@@ -120,12 +142,25 @@ function draw() {
     return;
   }
 
-  // guns
-  drawGun(gameState.players.blue, "#00aaff");
-  drawGun(gameState.players.white, "#ffffff");
+  let t = 1;
+  if (previousState) {
+    const elapsed = performance.now() - lastStateTime;
+    t = Math.min(elapsed / 33, 1); // 33ms ≈ 30fps server
+  }
 
-  // bullets
-  gameState.bullets.forEach(b => {
+  const blue = previousState
+    ? interpGun(previousState.players.blue, currentState.players.blue, t)
+    : currentState.players.blue;
+
+  const white = previousState
+    ? interpGun(previousState.players.white, currentState.players.white, t)
+    : currentState.players.white;
+
+  drawGun(blue, "#00aaff");
+  drawGun(white, "#ffffff");
+
+  // bullets (simple smoothing)
+  currentState.bullets.forEach(b => {
     ctx.fillStyle = "#ff0";
     ctx.beginPath();
     ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
@@ -133,7 +168,7 @@ function draw() {
   });
 
   // game over overlay
-  if (gameState.gameOver) {
+  if (currentState.gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.75)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -142,15 +177,15 @@ function draw() {
     ctx.textAlign = "center";
 
     const text =
-      gameState.winner === myPlayer ? "YOU WIN" : "YOU LOSE";
+      currentState.winner === myPlayer ? "YOU WIN" : "YOU LOSE";
 
     ctx.fillText(text, canvas.width / 2, canvas.height / 2 - 30);
 
     rematchBtn.style.display = "block";
 
     if (
-      gameState.rematchReady &&
-      !gameState.rematchReady[myPlayer]
+      currentState.rematchReady &&
+      !currentState.rematchReady[myPlayer]
     ) {
       ctx.font = "16px Arial";
       ctx.fillText(
