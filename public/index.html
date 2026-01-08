@@ -5,22 +5,56 @@
 <title>Pistol Duel</title>
 
 <style>
-body { margin:0; background:#444; overflow:hidden; font-family:Arial; }
-canvas { display:block; margin:auto; border:6px solid #777; border-radius:14px; background:#000; }
-#menu {
-  position:absolute; inset:0; background:rgba(0,0,0,.85);
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  color:#fff; gap:14px;
+body {
+  margin:0;
+  background:#444;
+  overflow:hidden;
+  font-family:Arial;
 }
-.section { background:#111; padding:16px; border-radius:10px; width:260px; }
-input, button { width:100%; padding:10px; margin-top:6px; font-size:16px; }
+canvas {
+  display:block;
+  margin:auto;
+  border:6px solid #777;
+  border-radius:14px;
+  background:#000;
+}
+#menu {
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,.85);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  color:#fff;
+  gap:14px;
+}
+.section {
+  background:#111;
+  padding:16px;
+  border-radius:10px;
+  width:260px;
+}
+input, button {
+  width:100%;
+  padding:10px;
+  margin-top:6px;
+  font-size:16px;
+}
 .map-btn { background:#333; }
 .map-btn.active { background:#00aaff; }
+
 #overlay {
-  position:absolute; inset:0; display:flex;
-  align-items:center; justify-content:center;
-  font-size:48px; color:#fff; pointer-events:none;
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
   text-align:center;
+  font-size:48px;
+  color:#fff;
+  pointer-events:none;
+  white-space:pre-line;
 }
 </style>
 </head>
@@ -53,97 +87,112 @@ canvas.width = 420;
 canvas.height = innerHeight - 20;
 
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
-let state = null, mapSel = "zeroG";
+let state = null;
+let mapSel = "zeroG";
 
 // ===== AUDIO =====
 const ac = new (window.AudioContext||webkitAudioContext)();
-function shot(){ const o=ac.createOscillator(),g=ac.createGain();
-  o.type="square"; o.frequency.value=180;
-  g.gain.setValueAtTime(.12,ac.currentTime);
-  g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.07);
-  o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime+.07);
+
+function shot(){
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = "square";
+  o.frequency.value = 180;
+  g.gain.setValueAtTime(.12, ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + .07);
+  o.connect(g).connect(ac.destination);
+  o.start();
+  o.stop(ac.currentTime + .07);
 }
-function hit(){ const o=ac.createOscillator(),g=ac.createGain();
-  o.type="triangle"; o.frequency.value=520;
-  g.gain.setValueAtTime(.15,ac.currentTime);
-  g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.12);
-  o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime+.12);
+
+function hitSound(){
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = "triangle";
+  o.frequency.value = 520;
+  g.gain.setValueAtTime(.15, ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + .12);
+  o.connect(g).connect(ac.destination);
+  o.start();
+  o.stop(ac.currentTime + .12);
 }
 
 // ===== MENU =====
 function sel(m){
-  mapSel=m;
-  document.querySelectorAll(".map-btn").forEach(b=>b.classList.remove("active"));
+  mapSel = m;
+  document.querySelectorAll(".map-btn")
+    .forEach(b => b.classList.remove("active"));
   event.target.classList.add("active");
 }
 function create(){
-  ws.send(JSON.stringify({type:"create",room:cRoom.value,map:mapSel}));
+  ws.send(JSON.stringify({ type:"create", room:cRoom.value, map:mapSel }));
 }
 function join(){
-  ws.send(JSON.stringify({type:"join",room:jRoom.value}));
+  ws.send(JSON.stringify({ type:"join", room:jRoom.value }));
 }
 
 // ===== INPUT =====
-canvas.onclick=()=>{ 
-  if(state?.started){
-    ac.resume(); 
-    ws.send(JSON.stringify({type:"shoot"})); 
+canvas.onclick = () => {
+  if (state?.started && !state.gameOver) {
+    ac.resume();
+    ws.send(JSON.stringify({ type:"shoot" }));
   }
 };
 
 // ===== WS =====
-ws.onmessage=e=>{
-  const d=JSON.parse(e.data);
-  if(d.type==="joined") document.getElementById("menu").style.display="none";
-  if(d.type==="state"){
-    if(state && d.state.bullets.length>state.bullets.length) shot();
-    if(state && d.state.bullets.length<state.bullets.length) hit();
-    state=d.state;
+ws.onmessage = e => {
+  const d = JSON.parse(e.data);
+
+  if (d.type === "joined") {
+    document.getElementById("menu").style.display = "none";
+  }
+
+  if (d.type === "state") {
+    if (state && d.state.bullets.length > state.bullets.length) {
+      shot();
+    }
+    if (state && !state.gameOver && d.state.gameOver) {
+      hitSound();
+    }
+    state = d.state;
   }
 };
 
 // ===== DRAW HELPERS =====
 function bg(b){
-  ctx.fillStyle=b==="space"?"#000":b==="moon"?"#222":"#111";
+  ctx.fillStyle =
+    b === "space" ? "#000" :
+    b === "moon"  ? "#222" : "#111";
   ctx.fillRect(0,0,canvas.width,canvas.height);
 }
 
-// ===== COOL GUN (RESTORED) =====
-function gun(g, baseColor){
+// ===== COOL GUN =====
+function gun(g, base){
   ctx.save();
   ctx.translate(g.x, g.y);
   ctx.rotate(g.angle);
 
-  const dark =
-    baseColor === "#ff4444" ? "#cc3333" : "#0077aa";
-  const darker =
-    baseColor === "#ff4444" ? "#992222" : "#005577";
+  const dark = base === "#ff4444" ? "#cc3333" : "#0077aa";
+  const darker = base === "#ff4444" ? "#992222" : "#005577";
 
-  // main body
-  ctx.fillStyle = baseColor;
+  ctx.fillStyle = base;
   ctx.fillRect(-20, -8, 40, 16);
 
-  // slide
   ctx.fillStyle = dark;
   ctx.fillRect(-18, -11, 36, 6);
 
-  // barrel
   ctx.fillStyle = darker;
   ctx.fillRect(20, -3, 16, 6);
 
-  // barrel hole
   ctx.fillStyle = "#000";
   ctx.beginPath();
   ctx.arc(36, 0, 2, 0, Math.PI * 2);
   ctx.fill();
 
-  // grip
   ctx.fillStyle = darker;
   ctx.fillRect(-8, 8, 12, 18);
 
-  // grip lines
   ctx.strokeStyle = "#000";
-  ctx.lineWidth = 1;
   for (let i = 0; i < 4; i++) {
     ctx.beginPath();
     ctx.moveTo(-6, 10 + i * 4);
@@ -151,7 +200,6 @@ function gun(g, baseColor){
     ctx.stroke();
   }
 
-  // highlight
   ctx.strokeStyle = "rgba(255,255,255,0.25)";
   ctx.beginPath();
   ctx.moveTo(-18, -6);
@@ -163,25 +211,35 @@ function gun(g, baseColor){
 
 // ===== LOOP =====
 function loop(){
-  if(!state) return requestAnimationFrame(loop);
+  if (!state) {
+    requestAnimationFrame(loop);
+    return;
+  }
 
   bg(state.map.background);
 
   gun(state.players.blue, "#00aaff");
   gun(state.players.white, "#ff4444");
 
-  state.bullets.forEach(b=>{
-    ctx.fillStyle=b.owner==="blue"?"#00aaff":"#ff4444";
+  state.bullets.forEach(b => {
+    ctx.fillStyle = b.owner === "blue" ? "#00aaff" : "#ff4444";
     ctx.beginPath();
-    ctx.arc(b.x,b.y,3,0,Math.PI*2);
+    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
     ctx.fill();
   });
 
-  const o=document.getElementById("overlay");
-  if(!state.started){
-    const t=Math.ceil((state.startAt-Date.now())/1000);
-    o.innerText = t>0 ? `${state.map.name}\n${t}` : "GO!";
-    if(t<=-1) o.innerText="";
+  const o = document.getElementById("overlay");
+
+  if (!state.started && !state.gameOver) {
+    const t = Math.ceil((state.startAt - Date.now()) / 1000);
+    o.innerText = t > 0 ? `${state.map.name}\n${t}` : "GO!";
+  }
+  else if (state.started) {
+    o.innerText = "";
+  }
+
+  if (state.gameOver) {
+    o.innerText = state.winner === "blue" ? "YOU WIN" : "YOU LOSE";
   }
 
   requestAnimationFrame(loop);
