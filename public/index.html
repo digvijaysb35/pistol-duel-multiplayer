@@ -179,6 +179,7 @@ let prevState = null;
 let mapSel = "zeroG";
 let myPlayer = null;
 let rematchSent = false;
+  let inMenu = true;
 
 const overlay = document.getElementById("overlay");
 const rematchBtn = document.getElementById("rematch");
@@ -249,8 +250,9 @@ ws.onmessage=e=>{
   const d=JSON.parse(e.data);
 
   if(d.type==="joined"){
-    myPlayer=d.player;
-    document.getElementById("menu").style.display="none";
+  myPlayer = d.player;
+  inMenu = false;
+  document.getElementById("menu").style.display = "none";
   }
 
   if(d.type==="state"){
@@ -337,7 +339,11 @@ function gun(g, base){
   }
 
 function loop(){
-  if(!state) return requestAnimationFrame(loop);
+  if (inMenu || !state) {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    requestAnimationFrame(loop);
+    return;
+    }
 
   bg(state.map.background);
 
