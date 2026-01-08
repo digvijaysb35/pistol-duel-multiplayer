@@ -1,23 +1,112 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Pistol Duel</title>
+
 <style>
-body { margin:0; background:#222; overflow:hidden; }
-canvas { display:block; margin:auto; border:6px solid #777; border-radius:14px; background:#000; }
-#menu { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; }
-button { padding:12px 20px; font-size:18px; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #444;
+  height: 100%;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+}
+
+canvas {
+  display: block;
+  margin: auto;
+  background: #000;
+  border: 6px solid #777;
+  border-radius: 14px;
+}
+
+/* ===== MENU ===== */
+#menu {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+}
+
+.section {
+  border: 1px solid #555;
+  padding: 16px;
+  width: 260px;
+  border-radius: 10px;
+  background: #111;
+}
+
+.section h3 {
+  margin: 0 0 10px 0;
+  text-align: center;
+}
+
+input, button {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  margin-top: 6px;
+  border-radius: 6px;
+  border: none;
+}
+
+input {
+  background: #222;
+  color: #fff;
+  border: 1px solid #555;
+}
+
+button {
+  background: #00aaff;
+  color: #fff;
+}
+
+.map-btn {
+  background: #333;
+  margin-top: 6px;
+}
+
+.map-btn.active {
+  background: #00aaff;
+}
+
+#status {
+  margin-top: 10px;
+  font-size: 14px;
+  opacity: 0.8;
+}
 </style>
 </head>
+
 <body>
 
 <div id="menu">
-  <button onclick="create('zeroG')">Create Zero-G</button>
-  <button onclick="create('moon')">Create Moon</button>
-  <button onclick="create('heavy')">Create Heavy</button>
-  <input id="room" placeholder="Room Code">
-  <button onclick="join()">Join Room</button>
+  <div class="section">
+    <h3>Create Room</h3>
+    <input id="createRoom" placeholder="Room code (e.g. duel1)">
+    <div>
+      <button class="map-btn active" onclick="selectMap('zeroG')">Zero-G</button>
+      <button class="map-btn" onclick="selectMap('moon')">Moon</button>
+      <button class="map-btn" onclick="selectMap('heavy')">Heavy</button>
+    </div>
+    <button onclick="createRoom()">Create</button>
+  </div>
+
+  <div class="section">
+    <h3>Join Room</h3>
+    <input id="joinRoom" placeholder="Room code">
+    <button onclick="joinRoom()">Join</button>
+  </div>
+
+  <div id="status"></div>
 </div>
 
 <canvas id="game"></canvas>
@@ -25,57 +114,143 @@ button { padding:12px 20px; font-size:18px; }
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-canvas.width = 420;
+canvas.width = Math.min(innerWidth - 20, 420);
 canvas.height = innerHeight - 20;
 
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
-let state = null;
+let gameState = null;
+let selectedMap = "zeroG";
 
-function create(map) {
-  const room = Math.random().toString(36).slice(2,7);
-  ws.send(JSON.stringify({ type:"create", room, map }));
-  alert("Room Code: " + room);
-  document.getElementById("menu").style.display = "none";
+// ===== MENU LOGIC =====
+function selectMap(map) {
+  selectedMap = map;
+  document.querySelectorAll(".map-btn").forEach(b => b.classList.remove("active"));
+  event.target.classList.add("active");
 }
 
-function join() {
-  const room = document.getElementById("room").value;
-  ws.send(JSON.stringify({ type:"join", room }));
-  document.getElementById("menu").style.display = "none";
+function createRoom() {
+  const room = document.getElementById("createRoom").value.trim();
+  if (!room) return setStatus("Enter a room code");
+  ws.send(JSON.stringify({ type: "create", room, map: selectedMap }));
+  setStatus("Room created. Waiting for player...");
 }
 
-canvas.onclick = () => ws.send(JSON.stringify({ type:"shoot" }));
+function joinRoom() {
+  const room = document.getElementById("joinRoom").value.trim();
+  if (!room) return setStatus("Enter a room code");
+  ws.send(JSON.stringify({ type: "join", room }));
+  setStatus("Joining room...");
+}
 
+function setStatus(t) {
+  document.getElementById("status").innerText = t;
+}
+
+// ===== INPUT =====
+canvas.addEventListener("click", () => {
+  if (!gameState || gameState.gameOver) return;
+  ws.send(JSON.stringify({ type: "shoot" }));
+});
+
+// ===== WEBSOCKET =====
 ws.onmessage = e => {
   const data = JSON.parse(e.data);
-  if (data.type === "state") state = data.state;
+
+  if (data.type === "joined") {
+    document.getElementById("menu").style.display = "none";
+  }
+
+  if (data.type === "state") {
+    gameState = data.state;
+  }
 };
 
-function drawBG(bg) {
+// ===== BACKGROUND =====
+function drawBackground(bg) {
   ctx.fillStyle =
     bg === "space" ? "#000" :
-    bg === "moon" ? "#222" : "#111";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+    bg === "moon" ? "#222" :
+    "#111";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-function drawGun(g,c){
-  ctx.save(); ctx.translate(g.x,g.y); ctx.rotate(g.angle);
-  ctx.fillStyle=c; ctx.fillRect(-20,-8,40,16);
+// ===== COOL GUN (RESTORED) =====
+function drawGun(g, baseColor) {
+  ctx.save();
+  ctx.translate(g.x, g.y);
+  ctx.rotate(g.angle);
+
+  const dark = baseColor === "#ff4444" ? "#cc3333" : "#0077aa";
+  const darker = baseColor === "#ff4444" ? "#992222" : "#005577";
+
+  // body
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(-20, -8, 40, 16);
+
+  // slide
+  ctx.fillStyle = dark;
+  ctx.fillRect(-18, -11, 36, 6);
+
+  // barrel
+  ctx.fillStyle = darker;
+  ctx.fillRect(20, -3, 16, 6);
+
+  // barrel hole
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.arc(36, 0, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // grip
+  ctx.fillStyle = darker;
+  ctx.fillRect(-8, 8, 12, 18);
+
+  // grip lines
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(-6, 10 + i * 4);
+    ctx.lineTo(2, 10 + i * 4);
+    ctx.stroke();
+  }
+
+  // highlight
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.beginPath();
+  ctx.moveTo(-18, -6);
+  ctx.lineTo(16, -6);
+  ctx.stroke();
+
   ctx.restore();
 }
 
-function loop(){
-  if (!state) return requestAnimationFrame(loop);
-  drawBG(state.map.background);
-  drawGun(state.players.blue,"#00aaff");
-  drawGun(state.players.white,"#ff4444");
-  state.bullets.forEach(b=>{
-    ctx.fillStyle=b.owner==="blue"?"#00aaff":"#ff4444";
-    ctx.beginPath(); ctx.arc(b.x,b.y,3,0,Math.PI*2); ctx.fill();
-  });
+// ===== BULLET =====
+function drawBullet(b) {
+  ctx.fillStyle = b.owner === "blue" ? "#00aaff" : "#ff4444";
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ===== LOOP =====
+function loop() {
+  if (!gameState) {
+    requestAnimationFrame(loop);
+    return;
+  }
+
+  drawBackground(gameState.map.background);
+
+  drawGun(gameState.players.blue, "#00aaff");
+  drawGun(gameState.players.white, "#ff4444");
+
+  gameState.bullets.forEach(drawBullet);
+
   requestAnimationFrame(loop);
 }
+
 loop();
 </script>
 </body>
