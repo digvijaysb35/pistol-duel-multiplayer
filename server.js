@@ -9,7 +9,7 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
-// ================= MAP DEFINITIONS
+// ================= MAPS
 const MAPS = {
   zeroG: { name: "Zero-G Arena", gravity: 0, background: "space" },
   moon:  { name: "Moon Base", gravity: 0.02, background: "moon" },
@@ -24,7 +24,7 @@ const ANGULAR_TRANSFER = 0.015;
 const ROTATION_DAMPING = 0.992;
 const LINEAR_DAMPING = 0.998;
 
-// ================= HEAT SYSTEM (LOCKED)
+// ================= HEAT (LOCKED)
 const HEAT_PER_SHOT = 1;
 const MAX_HEAT = 6;
 const COOL_RATE = 0.04;
@@ -37,10 +37,8 @@ const HEIGHT = 800;
 // ================= GUN
 class Gun {
   constructor(x, y) {
-    this.x = x;
-    this.y = y;
-    this.vx = 0;
-    this.vy = 0;
+    this.x = x; this.y = y;
+    this.vx = 0; this.vy = 0;
     this.angle = Math.random() * Math.PI * 2;
     this.av = 0;
     this.radius = 20;
@@ -82,19 +80,19 @@ class Gun {
     }
   }
 
-  applyWallCollision(nx, ny) {
-    const dot = this.vx * nx + this.vy * ny;
-    if (dot < 0) {
-      this.vx -= 2 * dot * nx;
-      this.vy -= 2 * dot * ny;
+  applyWall(nx, ny) {
+    const d = this.vx * nx + this.vy * ny;
+    if (d < 0) {
+      this.vx -= 2 * d * nx;
+      this.vy -= 2 * d * ny;
       this.vx *= WALL_RESTITUTION;
       this.vy *= WALL_RESTITUTION;
-      this.av += dot * ANGULAR_TRANSFER;
+      this.av += d * ANGULAR_TRANSFER;
     }
   }
 
-  update(gravity) {
-    this.vy += gravity;
+  update(g) {
+    this.vy += g;
     this.x += this.vx;
     this.y += this.vy;
     this.angle += this.av;
@@ -107,10 +105,10 @@ class Gun {
       this.heat = Math.max(0, this.heat - COOL_RATE);
     }
 
-    if (this.x - this.radius < 0) { this.x = this.radius; this.applyWallCollision(1,0); }
-    if (this.x + this.radius > WIDTH) { this.x = WIDTH - this.radius; this.applyWallCollision(-1,0); }
-    if (this.y - this.radius < 0) { this.y = this.radius; this.applyWallCollision(0,1); }
-    if (this.y + this.radius > HEIGHT) { this.y = HEIGHT - this.radius; this.applyWallCollision(0,-1); }
+    if (this.x - this.radius < 0) { this.x = this.radius; this.applyWall(1,0); }
+    if (this.x + this.radius > WIDTH) { this.x = WIDTH - this.radius; this.applyWall(-1,0); }
+    if (this.y - this.radius < 0) { this.y = this.radius; this.applyWall(0,1); }
+    if (this.y + this.radius > HEIGHT) { this.y = HEIGHT - this.radius; this.applyWall(0,-1); }
   }
 }
 
@@ -126,9 +124,8 @@ function createRoom(mapKey) {
     },
     bullets: [],
     clients: {},
-    gameOver: false,
-    winner: null,
-    rematchReady: { blue: false, white: false }
+    started: false,
+    startAt: 0
   };
 }
 
@@ -136,67 +133,73 @@ function hit(b, g) {
   return Math.abs(b.x - g.x) < 20 && Math.abs(b.y - g.y) < 20;
 }
 
-// ================= WEBSOCKET
+// ================= WS
 wss.on("connection", ws => {
   ws.on("message", msg => {
-    const data = JSON.parse(msg);
+    const d = JSON.parse(msg);
 
-    if (data.type === "create") {
-      rooms[data.room] = createRoom(data.map);
-      ws.room = data.room;
+    if (d.type === "create") {
+      rooms[d.room] = createRoom(d.map);
+      ws.room = d.room;
       ws.player = "blue";
-      rooms[data.room].clients.blue = ws;
+      rooms[d.room].clients.blue = ws;
       ws.send(JSON.stringify({ type: "joined", player: "blue" }));
     }
 
-    if (data.type === "join") {
-      const room = rooms[data.room];
-      if (!room || room.clients.white) return;
-      ws.room = data.room;
+    if (d.type === "join") {
+      const r = rooms[d.room];
+      if (!r || r.clients.white) return;
+      ws.room = d.room;
       ws.player = "white";
-      room.clients.white = ws;
+      r.clients.white = ws;
+
+      // start countdown
+      r.started = false;
+      r.startAt = Date.now() + 3000;
+
       ws.send(JSON.stringify({ type: "joined", player: "white" }));
     }
 
-    if (data.type === "shoot") {
-      const room = rooms[ws.room];
-      if (!room || room.gameOver) return;
-      room.players[ws.player].shoot(room.bullets, ws.player);
+    if (d.type === "shoot") {
+      const r = rooms[ws.room];
+      if (!r || !r.started) return;
+      r.players[ws.player].shoot(r.bullets, ws.player);
     }
   });
 });
 
-// ================= GAME LOOP
+// ================= LOOP
 setInterval(() => {
-  Object.values(rooms).forEach(room => {
-    room.players.blue.update(room.map.gravity);
-    room.players.white.update(room.map.gravity);
+  Object.values(rooms).forEach(r => {
+    if (!r.started && r.startAt && Date.now() >= r.startAt) {
+      r.started = true;
+    }
 
-    room.bullets.forEach((b, i) => {
-      b.x += b.vx;
-      b.y += b.vy;
+    if (r.started) {
+      r.players.blue.update(r.map.gravity);
+      r.players.white.update(r.map.gravity);
 
-      if (b.owner !== "blue" && hit(b, room.players.blue)) {
-        room.gameOver = true; room.winner = "white";
-      }
-      if (b.owner !== "white" && hit(b, room.players.white)) {
-        room.gameOver = true; room.winner = "blue";
-      }
+      r.bullets.forEach((b, i) => {
+        b.x += b.vx;
+        b.y += b.vy;
 
-      if (b.x < 0 || b.x > WIDTH || b.y < 0 || b.y > HEIGHT) {
-        room.bullets.splice(i, 1);
-      }
-    });
+        if (b.owner !== "blue" && hit(b, r.players.blue)) r.started = false;
+        if (b.owner !== "white" && hit(b, r.players.white)) r.started = false;
+
+        if (b.x < 0 || b.x > WIDTH || b.y < 0 || b.y > HEIGHT)
+          r.bullets.splice(i, 1);
+      });
+    }
 
     const state = {
-      players: room.players,
-      bullets: room.bullets,
-      gameOver: room.gameOver,
-      winner: room.winner,
-      map: room.map
+      players: r.players,
+      bullets: r.bullets,
+      map: r.map,
+      started: r.started,
+      startAt: r.startAt
     };
 
-    Object.values(room.clients).forEach(ws =>
+    Object.values(r.clients).forEach(ws =>
       ws.send(JSON.stringify({ type: "state", state }))
     );
   });
