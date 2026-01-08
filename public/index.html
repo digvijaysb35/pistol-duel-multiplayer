@@ -19,13 +19,13 @@ canvas {
   background:#000;
 }
 
-/* ===== HOME BUTTON ===== */
+/* HOME */
 #homeBtn {
   position:fixed;
   top:10px;
   left:10px;
-  width:40px;
-  height:40px;
+  width:38px;
+  height:38px;
   border-radius:8px;
   border:none;
   background:#222;
@@ -33,10 +33,8 @@ canvas {
   font-size:20px;
   z-index:10;
 }
-#homeBtn:active {
-  background:#444;
-}
 
+/* MENU */
 #menu {
   position:absolute;
   inset:0;
@@ -63,6 +61,7 @@ input, button {
 .map-btn { background:#333; }
 .map-btn.active { background:#00aaff; }
 
+/* OVERLAY */
 #overlay {
   position:absolute;
   inset:0;
@@ -70,13 +69,13 @@ input, button {
   align-items:center;
   justify-content:center;
   text-align:center;
-  font-size:48px;
+  font-size:44px;
   color:#fff;
   pointer-events:none;
   white-space:pre-line;
 }
 
-/* ===== REMATCH ===== */
+/* REMATCH */
 #rematch {
   position:absolute;
   left:50%;
@@ -89,16 +88,15 @@ input, button {
   background:#00aaff;
   color:#fff;
   display:none;
-  width:auto;   /* ✅ overrides width:100% */
+  width:auto;
 }
-
 #rematchStatus {
   position:absolute;
   left:50%;
   top:72%;
   transform:translateX(-50%);
-  color:#fff;
   font-size:14px;
+  color:#ccc;
   display:none;
 }
 </style>
@@ -106,7 +104,7 @@ input, button {
 
 <body>
 
-<button id="homeBtn" title="Home">⌂</button>
+<button id="homeBtn">⌂</button>
 
 <div id="menu">
   <div class="section">
@@ -114,7 +112,7 @@ input, button {
     <input id="cRoom" placeholder="Room code">
     <button class="map-btn active" onclick="sel('zeroG')">Zero-G</button>
     <button class="map-btn" onclick="sel('moon')">Moon</button>
-    <button class="map-btn" onclick="sel('heavy')">Heavy</button>
+    <button class="map-btn" onclick="sel('earth')">Earth</button>
     <button onclick="create()">Create</button>
   </div>
   <div class="section">
@@ -138,6 +136,7 @@ canvas.height = innerHeight - 20;
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
 let state = null;
+let prevState = null;
 let mapSel = "zeroG";
 let myPlayer = null;
 let rematchSent = false;
@@ -145,138 +144,143 @@ let rematchSent = false;
 const overlay = document.getElementById("overlay");
 const rematchBtn = document.getElementById("rematch");
 const rematchStatus = document.getElementById("rematchStatus");
-const homeBtn = document.getElementById("homeBtn");
-
-// ===== HOME =====
-homeBtn.onclick = () => location.reload();
+document.getElementById("homeBtn").onclick = () => location.reload();
 
 // ===== AUDIO =====
 const ac = new (window.AudioContext||webkitAudioContext)();
-function shot(){
-  const o = ac.createOscillator(), g = ac.createGain();
-  o.type = "square"; o.frequency.value = 180;
-  g.gain.setValueAtTime(.12, ac.currentTime);
-  g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + .07);
+
+function shotSound(){
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type="square"; o.frequency.value=180;
+  g.gain.setValueAtTime(.12,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.07);
   o.connect(g).connect(ac.destination);
-  o.start(); o.stop(ac.currentTime + .07);
+  o.start(); o.stop(ac.currentTime+.07);
 }
+
 function hitSound(){
-  const o = ac.createOscillator(), g = ac.createGain();
-  o.type = "triangle"; o.frequency.value = 520;
-  g.gain.setValueAtTime(.15, ac.currentTime);
-  g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + .12);
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type="sawtooth"; o.frequency.value=320;
+  g.gain.setValueAtTime(.1,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.1);
   o.connect(g).connect(ac.destination);
-  o.start(); o.stop(ac.currentTime + .12);
+  o.start(); o.stop(ac.currentTime+.1);
+}
+
+function winSound(){
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type="triangle"; o.frequency.value=520;
+  g.gain.setValueAtTime(.15,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.12);
+  o.connect(g).connect(ac.destination);
+  o.start(); o.stop(ac.currentTime+.12);
 }
 
 // ===== MENU =====
 function sel(m){
-  mapSel = m;
-  document.querySelectorAll(".map-btn")
-    .forEach(b => b.classList.remove("active"));
+  mapSel=m;
+  document.querySelectorAll(".map-btn").forEach(b=>b.classList.remove("active"));
   event.target.classList.add("active");
 }
 function create(){
-  ws.send(JSON.stringify({ type:"create", room:cRoom.value, map:mapSel }));
+  ws.send(JSON.stringify({type:"create",room:cRoom.value,map:mapSel}));
 }
 function join(){
-  ws.send(JSON.stringify({ type:"join", room:jRoom.value }));
+  ws.send(JSON.stringify({type:"join",room:jRoom.value}));
 }
 
 // ===== INPUT =====
-canvas.onclick = () => {
-  if (state?.started && !state.gameOver) {
+canvas.onclick=()=>{
+  if(state?.started && !state.gameOver){
     ac.resume();
-    ws.send(JSON.stringify({ type:"shoot" }));
+    ws.send(JSON.stringify({type:"shoot"}));
   }
 };
-
-rematchBtn.onclick = () => {
-  if (rematchSent) return;
-  ws.send(JSON.stringify({ type:"rematch" }));
-  rematchSent = true;
-  rematchStatus.innerText = "Waiting for opponent…";
-  rematchStatus.style.display = "block";
-  rematchBtn.style.display = "none";
+rematchBtn.onclick=()=>{
+  if(rematchSent) return;
+  ws.send(JSON.stringify({type:"rematch"}));
+  rematchSent=true;
+  rematchBtn.style.display="none";
+  rematchStatus.style.display="block";
+  rematchStatus.innerText="Waiting for opponent…";
 };
 
 // ===== WS =====
-ws.onmessage = e => {
-  const d = JSON.parse(e.data);
+ws.onmessage=e=>{
+  const d=JSON.parse(e.data);
 
-  if (d.type === "joined") {
-    myPlayer = d.player;
-    document.getElementById("menu").style.display = "none";
+  if(d.type==="joined"){
+    myPlayer=d.player;
+    document.getElementById("menu").style.display="none";
   }
 
-  if (d.type === "state") {
-    if (state && d.state.bullets.length > state.bullets.length) shot();
-    if (state && !state.gameOver && d.state.gameOver) hitSound();
+  if(d.type==="state"){
+    if(state){
+      if(d.state.bullets.length>state.bullets.length) shotSound();
 
-    // reset UI on new match
-    if (state && state.gameOver && !d.state.gameOver) {
-      rematchSent = false;
-      rematchBtn.style.display = "none";
-      rematchStatus.style.display = "none";
+      // detect hit (health drop)
+      if(
+        d.state.players.blue.health < state.players.blue.health ||
+        d.state.players.white.health < state.players.white.health
+      ){
+        hitSound();
+      }
+
+      // detect game over
+      if(!state.gameOver && d.state.gameOver){
+        winSound();
+      }
+
+      // reset UI on new match
+      if(state.gameOver && !d.state.gameOver){
+        rematchSent=false;
+        rematchStatus.style.display="none";
+      }
     }
-
-    state = d.state;
+    prevState=state;
+    state=d.state;
   }
 };
 
 // ===== DRAW =====
 function bg(b){
-  ctx.fillStyle =
-    b === "space" ? "#000" :
-    b === "moon"  ? "#222" : "#111";
+  ctx.fillStyle=b==="space"?"#000":b==="moon"?"#222":"#111";
   ctx.fillRect(0,0,canvas.width,canvas.height);
 }
 
-function gun(g, base){
+function gun(g,c){
   ctx.save();
-  ctx.translate(g.x, g.y);
+  ctx.translate(g.x,g.y);
   ctx.rotate(g.angle);
-
-  const dark = base === "#ff4444" ? "#cc3333" : "#0077aa";
-  const darker = base === "#ff4444" ? "#992222" : "#005577";
-
-  ctx.fillStyle = base;
-  ctx.fillRect(-20, -8, 40, 16);
-  ctx.fillStyle = dark;
-  ctx.fillRect(-18, -11, 36, 6);
-  ctx.fillStyle = darker;
-  ctx.fillRect(20, -3, 16, 6);
-  ctx.fillStyle = darker;
-  ctx.fillRect(-8, 8, 12, 18);
-
+  ctx.fillStyle=c;
+  ctx.fillRect(-20,-8,40,16);
+  ctx.fillRect(-8,8,12,18);
   ctx.restore();
 }
 
 function loop(){
-  if (!state) return requestAnimationFrame(loop);
+  if(!state) return requestAnimationFrame(loop);
 
   bg(state.map.background);
-  gun(state.players.blue, "#00aaff");
-  gun(state.players.white, "#ff4444");
 
-  state.bullets.forEach(b => {
-    ctx.fillStyle = b.owner === "blue" ? "#00aaff" : "#ff4444";
+  gun(state.players.blue,"#00aaff");
+  gun(state.players.white,"#ff4444");
+
+  state.bullets.forEach(b=>{
+    ctx.fillStyle=b.owner==="blue"?"#00aaff":"#ff4444";
     ctx.beginPath();
-    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+    ctx.arc(b.x,b.y,3,0,Math.PI*2);
     ctx.fill();
   });
 
-  if (!state.started && !state.gameOver) {
-    const t = Math.ceil((state.startAt - Date.now()) / 1000);
-    overlay.innerText = t > 0 ? `${state.map.name}\n${t}` : "GO!";
-  } else {
-    overlay.innerText = "";
-  }
+  if(!state.started && !state.gameOver){
+    const t=Math.ceil((state.startAt-Date.now())/1000);
+    overlay.innerText=t>0?`${state.map.name}\n${t}`:"GO!";
+  } else overlay.innerText="";
 
-  if (state.gameOver) {
-    overlay.innerText =
-      state.winner === myPlayer ? "YOU WIN" : "YOU LOSE";
-    if (!rematchSent) rematchBtn.style.display = "block";
+  if(state.gameOver){
+    overlay.innerText=state.winner===myPlayer?"YOU WIN":"YOU LOSE";
+    if(!rematchSent) rematchBtn.style.display="block";
   }
 
   requestAnimationFrame(loop);
