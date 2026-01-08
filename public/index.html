@@ -18,6 +18,25 @@ canvas {
   border-radius:14px;
   background:#000;
 }
+
+/* ===== HOME BUTTON ===== */
+#homeBtn {
+  position:fixed;
+  top:10px;
+  left:10px;
+  width:40px;
+  height:40px;
+  border-radius:8px;
+  border:none;
+  background:#222;
+  color:#fff;
+  font-size:20px;
+  z-index:10;
+}
+#homeBtn:active {
+  background:#444;
+}
+
 #menu {
   position:absolute;
   inset:0;
@@ -57,13 +76,14 @@ input, button {
   white-space:pre-line;
 }
 
+/* ===== REMATCH ===== */
 #rematch {
   position:absolute;
   left:50%;
-  top:62%;
+  top:65%;
   transform:translateX(-50%);
-  padding:12px 26px;
-  font-size:18px;
+  padding:10px 22px;
+  font-size:16px;
   border:none;
   border-radius:8px;
   background:#00aaff;
@@ -74,16 +94,18 @@ input, button {
 #rematchStatus {
   position:absolute;
   left:50%;
-  top:70%;
+  top:72%;
   transform:translateX(-50%);
   color:#fff;
-  font-size:16px;
+  font-size:14px;
   display:none;
 }
 </style>
 </head>
 
 <body>
+
+<button id="homeBtn" title="Home">⌂</button>
 
 <div id="menu">
   <div class="section">
@@ -122,6 +144,10 @@ let rematchSent = false;
 const overlay = document.getElementById("overlay");
 const rematchBtn = document.getElementById("rematch");
 const rematchStatus = document.getElementById("rematchStatus");
+const homeBtn = document.getElementById("homeBtn");
+
+// ===== HOME =====
+homeBtn.onclick = () => location.reload();
 
 // ===== AUDIO =====
 const ac = new (window.AudioContext||webkitAudioContext)();
@@ -186,7 +212,7 @@ ws.onmessage = e => {
     if (state && d.state.bullets.length > state.bullets.length) shot();
     if (state && !state.gameOver && d.state.gameOver) hitSound();
 
-    // NEW MATCH STARTED → RESET UI
+    // reset UI on new match
     if (state && state.gameOver && !d.state.gameOver) {
       rematchSent = false;
       rematchBtn.style.display = "none";
@@ -215,18 +241,10 @@ function gun(g, base){
 
   ctx.fillStyle = base;
   ctx.fillRect(-20, -8, 40, 16);
-
   ctx.fillStyle = dark;
   ctx.fillRect(-18, -11, 36, 6);
-
   ctx.fillStyle = darker;
   ctx.fillRect(20, -3, 16, 6);
-
-  ctx.fillStyle = "#000";
-  ctx.beginPath();
-  ctx.arc(36, 0, 2, 0, Math.PI * 2);
-  ctx.fill();
-
   ctx.fillStyle = darker;
   ctx.fillRect(-8, 8, 12, 18);
 
