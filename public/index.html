@@ -5,6 +5,38 @@
 <title>Pistol Duel</title>
 
 <style>
+
+  #healthUI {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 10;
+}
+
+.health-label {
+  font-size: 12px;
+  color: #fff;
+  opacity: 0.8;
+}
+
+.health-bar {
+  width: 60px;
+  height: 8px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.health-fill {
+  height: 100%;
+  width: 100%;
+  background: #00ff88;
+  transition: width 0.2s linear;
+}
+  
 body {
   margin:0;
   background:#444;
@@ -125,11 +157,18 @@ input, button {
 <div id="overlay"></div>
 <button id="rematch">Rematch</button>
 <div id="rematchStatus"></div>
+  <div id="healthUI">
+  <div class="health-label">HP</div>
+  <div class="health-bar">
+    <div class="health-fill"></div>
+  </div>
+  </div>
 <canvas id="game"></canvas>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+  const healthFill = document.querySelector(".health-fill");
 canvas.width = 420;
 canvas.height = innerHeight - 20;
 
@@ -321,7 +360,15 @@ function loop(){
     overlay.innerText=state.winner===myPlayer?"YOU WIN":"YOU LOSE";
     if(!rematchSent) rematchBtn.style.display="block";
   }
-
+if (state && myPlayer) {
+  const me = state.players[myPlayer];
+  const percent = Math.max(0, me.health / 3) * 100;
+  healthFill.style.width = percent + "%";
+  healthFill.style.background =
+    percent > 66 ? "#00ff88" :
+    percent > 33 ? "#ffaa00" :
+                   "#ff4444";
+    }
   requestAnimationFrame(loop);
 }
 loop();
