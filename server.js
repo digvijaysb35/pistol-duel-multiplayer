@@ -125,7 +125,9 @@ function createRoom(mapKey) {
     bullets: [],
     clients: {},
     started: false,
-    startAt: 0
+    startAt: 0,
+    gameOver: false,
+    winner: null
   };
 }
 
@@ -153,8 +155,9 @@ wss.on("connection", ws => {
       ws.player = "white";
       r.clients.white = ws;
 
-      // start countdown
       r.started = false;
+      r.gameOver = false;
+      r.winner = null;
       r.startAt = Date.now() + 3000;
 
       ws.send(JSON.stringify({ type: "joined", player: "white" }));
@@ -162,7 +165,7 @@ wss.on("connection", ws => {
 
     if (d.type === "shoot") {
       const r = rooms[ws.room];
-      if (!r || !r.started) return;
+      if (!r || !r.started || r.gameOver) return;
       r.players[ws.player].shoot(r.bullets, ws.player);
     }
   });
@@ -171,11 +174,12 @@ wss.on("connection", ws => {
 // ================= LOOP
 setInterval(() => {
   Object.values(rooms).forEach(r => {
-    if (!r.started && r.startAt && Date.now() >= r.startAt) {
+
+    if (!r.started && !r.gameOver && r.startAt && Date.now() >= r.startAt) {
       r.started = true;
     }
 
-    if (r.started) {
+    if (r.started && !r.gameOver) {
       r.players.blue.update(r.map.gravity);
       r.players.white.update(r.map.gravity);
 
@@ -183,11 +187,23 @@ setInterval(() => {
         b.x += b.vx;
         b.y += b.vy;
 
-        if (b.owner !== "blue" && hit(b, r.players.blue)) r.started = false;
-        if (b.owner !== "white" && hit(b, r.players.white)) r.started = false;
+        if (b.owner !== "blue" && hit(b, r.players.blue)) {
+          r.gameOver = true;
+          r.started = false;
+          r.winner = "white";
+          r.bullets.length = 0;
+        }
 
-        if (b.x < 0 || b.x > WIDTH || b.y < 0 || b.y > HEIGHT)
+        if (b.owner !== "white" && hit(b, r.players.white)) {
+          r.gameOver = true;
+          r.started = false;
+          r.winner = "blue";
+          r.bullets.length = 0;
+        }
+
+        if (b.x < 0 || b.x > WIDTH || b.y < 0 || b.y > HEIGHT) {
           r.bullets.splice(i, 1);
+        }
       });
     }
 
@@ -196,7 +212,9 @@ setInterval(() => {
       bullets: r.bullets,
       map: r.map,
       started: r.started,
-      startAt: r.startAt
+      startAt: r.startAt,
+      gameOver: r.gameOver,
+      winner: r.winner
     };
 
     Object.values(r.clients).forEach(ws =>
