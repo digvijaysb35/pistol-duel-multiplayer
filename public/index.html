@@ -60,7 +60,7 @@ input, button {
 #rematch {
   position:absolute;
   left:50%;
-  top:60%;
+  top:62%;
   transform:translateX(-50%);
   padding:12px 26px;
   font-size:18px;
@@ -68,6 +68,16 @@ input, button {
   border-radius:8px;
   background:#00aaff;
   color:#fff;
+  display:none;
+}
+
+#rematchStatus {
+  position:absolute;
+  left:50%;
+  top:70%;
+  transform:translateX(-50%);
+  color:#fff;
+  font-size:16px;
   display:none;
 }
 </style>
@@ -93,6 +103,7 @@ input, button {
 
 <div id="overlay"></div>
 <button id="rematch">Rematch</button>
+<div id="rematchStatus"></div>
 <canvas id="game"></canvas>
 
 <script>
@@ -106,27 +117,25 @@ const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 let state = null;
 let mapSel = "zeroG";
 let myPlayer = null;
+let rematchSent = false;
 
 const overlay = document.getElementById("overlay");
 const rematchBtn = document.getElementById("rematch");
+const rematchStatus = document.getElementById("rematchStatus");
 
 // ===== AUDIO =====
 const ac = new (window.AudioContext||webkitAudioContext)();
-
 function shot(){
   const o = ac.createOscillator(), g = ac.createGain();
-  o.type = "square";
-  o.frequency.value = 180;
+  o.type = "square"; o.frequency.value = 180;
   g.gain.setValueAtTime(.12, ac.currentTime);
   g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + .07);
   o.connect(g).connect(ac.destination);
   o.start(); o.stop(ac.currentTime + .07);
 }
-
 function hitSound(){
   const o = ac.createOscillator(), g = ac.createGain();
-  o.type = "triangle";
-  o.frequency.value = 520;
+  o.type = "triangle"; o.frequency.value = 520;
   g.gain.setValueAtTime(.15, ac.currentTime);
   g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + .12);
   o.connect(g).connect(ac.destination);
@@ -156,7 +165,11 @@ canvas.onclick = () => {
 };
 
 rematchBtn.onclick = () => {
+  if (rematchSent) return;
   ws.send(JSON.stringify({ type:"rematch" }));
+  rematchSent = true;
+  rematchStatus.innerText = "Waiting for opponent…";
+  rematchStatus.style.display = "block";
   rematchBtn.style.display = "none";
 };
 
@@ -172,11 +185,19 @@ ws.onmessage = e => {
   if (d.type === "state") {
     if (state && d.state.bullets.length > state.bullets.length) shot();
     if (state && !state.gameOver && d.state.gameOver) hitSound();
+
+    // NEW MATCH STARTED → RESET UI
+    if (state && state.gameOver && !d.state.gameOver) {
+      rematchSent = false;
+      rematchBtn.style.display = "none";
+      rematchStatus.style.display = "none";
+    }
+
     state = d.state;
   }
 };
 
-// ===== DRAW HELPERS =====
+// ===== DRAW =====
 function bg(b){
   ctx.fillStyle =
     b === "space" ? "#000" :
@@ -184,7 +205,6 @@ function bg(b){
   ctx.fillRect(0,0,canvas.width,canvas.height);
 }
 
-// ===== COOL GUN =====
 function gun(g, base){
   ctx.save();
   ctx.translate(g.x, g.y);
@@ -210,32 +230,13 @@ function gun(g, base){
   ctx.fillStyle = darker;
   ctx.fillRect(-8, 8, 12, 18);
 
-  ctx.strokeStyle = "#000";
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    ctx.moveTo(-6, 10 + i * 4);
-    ctx.lineTo(2, 10 + i * 4);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
-  ctx.beginPath();
-  ctx.moveTo(-18, -6);
-  ctx.lineTo(16, -6);
-  ctx.stroke();
-
   ctx.restore();
 }
 
-// ===== LOOP =====
 function loop(){
-  if (!state) {
-    requestAnimationFrame(loop);
-    return;
-  }
+  if (!state) return requestAnimationFrame(loop);
 
   bg(state.map.background);
-
   gun(state.players.blue, "#00aaff");
   gun(state.players.white, "#ff4444");
 
@@ -256,7 +257,7 @@ function loop(){
   if (state.gameOver) {
     overlay.innerText =
       state.winner === myPlayer ? "YOU WIN" : "YOU LOSE";
-    rematchBtn.style.display = "block";
+    if (!rematchSent) rematchBtn.style.display = "block";
   }
 
   requestAnimationFrame(loop);
