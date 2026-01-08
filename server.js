@@ -9,11 +9,16 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
+// ================= MAP DEFINITIONS
+const MAPS = {
+  zeroG: { name: "Zero-G Arena", gravity: 0, background: "space" },
+  moon:  { name: "Moon Base", gravity: 0.02, background: "moon" },
+  heavy: { name: "Heavy Factory", gravity: 0.05, background: "factory" }
+};
+
 // ================= PHYSICS
-const GRAVITY = 0.00;
 const RECOIL_FORCE = 3.2;
 const BULLET_SPEED = 9;
-
 const WALL_RESTITUTION = 0.85;
 const ANGULAR_TRANSFER = 0.015;
 const ROTATION_DAMPING = 0.992;
@@ -23,11 +28,11 @@ const LINEAR_DAMPING = 0.998;
 const HEAT_PER_SHOT = 1;
 const MAX_HEAT = 6;
 const COOL_RATE = 0.04;
-const OVERHEAT_COOLDOWN = 10000; // 🔒 10 seconds
+const OVERHEAT_COOLDOWN = 10000;
 
-// ================= WORLD SIZE (TALL)
+// ================= WORLD
 const WIDTH = 420;
-const HEIGHT = 800; // ⬅️ increased from 640
+const HEIGHT = 800;
 
 // ================= GUN
 class Gun {
@@ -39,7 +44,6 @@ class Gun {
     this.angle = Math.random() * Math.PI * 2;
     this.av = 0;
     this.radius = 20;
-
     this.heat = 0;
     this.overheated = false;
     this.overheatUntil = 0;
@@ -47,7 +51,6 @@ class Gun {
 
   canShoot() {
     if (!this.overheated) return true;
-
     if (Date.now() >= this.overheatUntil) {
       this.overheated = false;
       this.heat = MAX_HEAT * 0.4;
@@ -58,7 +61,6 @@ class Gun {
 
   shoot(bullets, owner) {
     if (!this.canShoot()) return;
-
     const a = this.angle;
 
     bullets.push({
@@ -69,12 +71,10 @@ class Gun {
       owner
     });
 
-    // recoil
     this.vx -= Math.cos(a) * RECOIL_FORCE;
     this.vy -= Math.sin(a) * RECOIL_FORCE;
     this.av -= (Math.random() - 0.5) * 0.06;
 
-    // heat
     this.heat += HEAT_PER_SHOT;
     if (this.heat >= MAX_HEAT) {
       this.overheated = true;
@@ -93,9 +93,8 @@ class Gun {
     }
   }
 
-  update() {
-    this.vy += GRAVITY;
-
+  update(gravity) {
+    this.vy += gravity;
     this.x += this.vx;
     this.y += this.vy;
     this.angle += this.av;
@@ -108,30 +107,19 @@ class Gun {
       this.heat = Math.max(0, this.heat - COOL_RATE);
     }
 
-    if (this.x - this.radius < 0) {
-      this.x = this.radius;
-      this.applyWallCollision(1, 0);
-    }
-    if (this.x + this.radius > WIDTH) {
-      this.x = WIDTH - this.radius;
-      this.applyWallCollision(-1, 0);
-    }
-    if (this.y - this.radius < 0) {
-      this.y = this.radius;
-      this.applyWallCollision(0, 1);
-    }
-    if (this.y + this.radius > HEIGHT) {
-      this.y = HEIGHT - this.radius;
-      this.applyWallCollision(0, -1);
-    }
+    if (this.x - this.radius < 0) { this.x = this.radius; this.applyWallCollision(1,0); }
+    if (this.x + this.radius > WIDTH) { this.x = WIDTH - this.radius; this.applyWallCollision(-1,0); }
+    if (this.y - this.radius < 0) { this.y = this.radius; this.applyWallCollision(0,1); }
+    if (this.y + this.radius > HEIGHT) { this.y = HEIGHT - this.radius; this.applyWallCollision(0,-1); }
   }
 }
 
 // ================= ROOMS
 const rooms = {};
 
-function createRoom() {
+function createRoom(mapKey) {
   return {
+    map: MAPS[mapKey],
     players: {
       blue: new Gun(90, HEIGHT - 160),
       white: new Gun(WIDTH - 90, HEIGHT - 160)
@@ -144,34 +132,30 @@ function createRoom() {
   };
 }
 
-function resetRoom(room) {
-  room.players.blue = new Gun(90, HEIGHT - 160);
-  room.players.white = new Gun(WIDTH - 90, HEIGHT - 160);
-  room.bullets = [];
-  room.gameOver = false;
-  room.winner = null;
-  room.rematchReady = { blue: false, white: false };
-}
-
 function hit(b, g) {
   return Math.abs(b.x - g.x) < 20 && Math.abs(b.y - g.y) < 20;
 }
 
-// ================= WEBSOCKETS
+// ================= WEBSOCKET
 wss.on("connection", ws => {
   ws.on("message", msg => {
     const data = JSON.parse(msg);
 
-    if (data.type === "join") {
-      if (!rooms[data.room]) rooms[data.room] = createRoom();
-      const room = rooms[data.room];
-      if (Object.keys(room.clients).length >= 2) return;
-
+    if (data.type === "create") {
+      rooms[data.room] = createRoom(data.map);
       ws.room = data.room;
-      ws.player = room.clients.blue ? "white" : "blue";
-      room.clients[ws.player] = ws;
+      ws.player = "blue";
+      rooms[data.room].clients.blue = ws;
+      ws.send(JSON.stringify({ type: "joined", player: "blue" }));
+    }
 
-      ws.send(JSON.stringify({ type: "joined", player: ws.player }));
+    if (data.type === "join") {
+      const room = rooms[data.room];
+      if (!room || room.clients.white) return;
+      ws.room = data.room;
+      ws.player = "white";
+      room.clients.white = ws;
+      ws.send(JSON.stringify({ type: "joined", player: "white" }));
     }
 
     if (data.type === "shoot") {
@@ -179,51 +163,37 @@ wss.on("connection", ws => {
       if (!room || room.gameOver) return;
       room.players[ws.player].shoot(room.bullets, ws.player);
     }
-
-    if (data.type === "rematch") {
-      const room = rooms[ws.room];
-      if (!room || !room.gameOver) return;
-
-      room.rematchReady[ws.player] = true;
-      if (room.rematchReady.blue && room.rematchReady.white) {
-        resetRoom(room);
-      }
-    }
   });
 });
 
 // ================= GAME LOOP
 setInterval(() => {
   Object.values(rooms).forEach(room => {
-    if (!room.gameOver) {
-      room.players.blue.update();
-      room.players.white.update();
+    room.players.blue.update(room.map.gravity);
+    room.players.white.update(room.map.gravity);
 
-      room.bullets.forEach((b, i) => {
-        b.x += b.vx;
-        b.y += b.vy;
+    room.bullets.forEach((b, i) => {
+      b.x += b.vx;
+      b.y += b.vy;
 
-        if (b.owner !== "blue" && hit(b, room.players.blue)) {
-          room.gameOver = true;
-          room.winner = "white";
-        }
-        if (b.owner !== "white" && hit(b, room.players.white)) {
-          room.gameOver = true;
-          room.winner = "blue";
-        }
+      if (b.owner !== "blue" && hit(b, room.players.blue)) {
+        room.gameOver = true; room.winner = "white";
+      }
+      if (b.owner !== "white" && hit(b, room.players.white)) {
+        room.gameOver = true; room.winner = "blue";
+      }
 
-        if (b.x < 0 || b.x > WIDTH || b.y < 0 || b.y > HEIGHT) {
-          room.bullets.splice(i, 1);
-        }
-      });
-    }
+      if (b.x < 0 || b.x > WIDTH || b.y < 0 || b.y > HEIGHT) {
+        room.bullets.splice(i, 1);
+      }
+    });
 
     const state = {
       players: room.players,
       bullets: room.bullets,
       gameOver: room.gameOver,
       winner: room.winner,
-      rematchReady: room.rematchReady
+      map: room.map
     };
 
     Object.values(room.clients).forEach(ws =>
@@ -232,6 +202,4 @@ setInterval(() => {
   });
 }, 1000 / 60);
 
-server.listen(PORT, () => {
-  console.log("Server running on", PORT);
-});
+server.listen(PORT, () => console.log("Server running"));
