@@ -351,9 +351,17 @@ function loop(){
     ctx.fill();
   });
 
-  if(!state.started && !state.gameOver){
-    const t=Math.ceil((state.startAt-Date.now())/1000);
-    overlay.innerText=t>0?`${state.map.name}\n${t}`:"GO!";
+  if (
+  !state.started &&
+  !state.gameOver &&
+  state.startAt &&
+  state.startAt > Date.now() - 5000
+){
+  const t = Math.ceil((state.startAt - Date.now()) / 1000);
+  overlay.innerText = t > 0 ? `${state.map.name}\n${t}` : "GO!";
+} else if (!state.started && !state.gameOver) {
+  overlay.innerText = "Waiting for opponent…";
+    }
   } else overlay.innerText="";
 
   if(state.gameOver){
