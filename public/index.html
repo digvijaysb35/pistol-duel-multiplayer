@@ -20,6 +20,7 @@ input, button { width:100%; padding:10px; margin-top:6px; font-size:16px; }
   position:absolute; inset:0; display:flex;
   align-items:center; justify-content:center;
   font-size:48px; color:#fff; pointer-events:none;
+  text-align:center;
 }
 </style>
 </head>
@@ -83,7 +84,12 @@ function join(){
 }
 
 // ===== INPUT =====
-canvas.onclick=()=>{ if(state?.started){ ac.resume(); ws.send(JSON.stringify({type:"shoot"})); } };
+canvas.onclick=()=>{ 
+  if(state?.started){
+    ac.resume(); 
+    ws.send(JSON.stringify({type:"shoot"})); 
+  }
+};
 
 // ===== WS =====
 ws.onmessage=e=>{
@@ -96,33 +102,88 @@ ws.onmessage=e=>{
   }
 };
 
-// ===== DRAW =====
+// ===== DRAW HELPERS =====
 function bg(b){
   ctx.fillStyle=b==="space"?"#000":b==="moon"?"#222":"#111";
   ctx.fillRect(0,0,canvas.width,canvas.height);
 }
-function gun(g,c){
-  ctx.save(); ctx.translate(g.x,g.y); ctx.rotate(g.angle);
-  ctx.fillStyle=c; ctx.fillRect(-20,-8,40,16);
-  ctx.fillRect(-8,8,12,18);
+
+// ===== COOL GUN (RESTORED) =====
+function gun(g, baseColor){
+  ctx.save();
+  ctx.translate(g.x, g.y);
+  ctx.rotate(g.angle);
+
+  const dark =
+    baseColor === "#ff4444" ? "#cc3333" : "#0077aa";
+  const darker =
+    baseColor === "#ff4444" ? "#992222" : "#005577";
+
+  // main body
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(-20, -8, 40, 16);
+
+  // slide
+  ctx.fillStyle = dark;
+  ctx.fillRect(-18, -11, 36, 6);
+
+  // barrel
+  ctx.fillStyle = darker;
+  ctx.fillRect(20, -3, 16, 6);
+
+  // barrel hole
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.arc(36, 0, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // grip
+  ctx.fillStyle = darker;
+  ctx.fillRect(-8, 8, 12, 18);
+
+  // grip lines
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(-6, 10 + i * 4);
+    ctx.lineTo(2, 10 + i * 4);
+    ctx.stroke();
+  }
+
+  // highlight
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.beginPath();
+  ctx.moveTo(-18, -6);
+  ctx.lineTo(16, -6);
+  ctx.stroke();
+
   ctx.restore();
 }
+
+// ===== LOOP =====
 function loop(){
   if(!state) return requestAnimationFrame(loop);
+
   bg(state.map.background);
-  gun(state.players.blue,"#00aaff");
-  gun(state.players.white,"#ff4444");
+
+  gun(state.players.blue, "#00aaff");
+  gun(state.players.white, "#ff4444");
+
   state.bullets.forEach(b=>{
     ctx.fillStyle=b.owner==="blue"?"#00aaff":"#ff4444";
-    ctx.beginPath(); ctx.arc(b.x,b.y,3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(b.x,b.y,3,0,Math.PI*2);
+    ctx.fill();
   });
 
   const o=document.getElementById("overlay");
   if(!state.started){
     const t=Math.ceil((state.startAt-Date.now())/1000);
-    o.innerText=t>0?state.map.name+"\n"+t:"GO!";
+    o.innerText = t>0 ? `${state.map.name}\n${t}` : "GO!";
     if(t<=-1) o.innerText="";
   }
+
   requestAnimationFrame(loop);
 }
 loop();
