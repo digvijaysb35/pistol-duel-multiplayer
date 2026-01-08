@@ -5,8 +5,19 @@
 <title>Pistol Duel</title>
 
 <style>
-body { margin:0; background:#444; overflow:hidden; font-family:Arial; }
-canvas { display:block; margin:auto; border:6px solid #777; border-radius:14px; background:#000; }
+body {
+  margin:0;
+  background:#444;
+  overflow:hidden;
+  font-family:Arial;
+}
+canvas {
+  display:block;
+  margin:auto;
+  border:6px solid #777;
+  border-radius:14px;
+  background:#000;
+}
 
 /* HOME */
 #homeBtn {
@@ -27,14 +38,13 @@ canvas { display:block; margin:auto; border:6px solid #777; border-radius:14px; 
 #menu {
   position:absolute;
   inset:0;
-  background:rgba(0,0,0,.9);
+  background:rgba(0,0,0,.85);
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:center;
   color:#fff;
   gap:14px;
-  z-index:5;
 }
 .section {
   background:#111;
@@ -63,7 +73,6 @@ input, button {
   color:#fff;
   pointer-events:none;
   white-space:pre-line;
-  z-index:3;
 }
 
 /* REMATCH */
@@ -80,7 +89,6 @@ input, button {
   color:#fff;
   display:none;
   width:auto;
-  z-index:4;
 }
 #rematchStatus {
   position:absolute;
@@ -90,32 +98,6 @@ input, button {
   font-size:14px;
   color:#ccc;
   display:none;
-  z-index:4;
-}
-
-/* HEALTH */
-#healthUI {
-  position:fixed;
-  top:12px;
-  right:12px;
-  display:flex;
-  align-items:center;
-  gap:6px;
-  z-index:10;
-}
-.health-label { font-size:12px; color:#fff; opacity:.8; }
-.health-bar {
-  width:60px;
-  height:8px;
-  background:rgba(255,255,255,.25);
-  border-radius:4px;
-  overflow:hidden;
-}
-.health-fill {
-  height:100%;
-  width:100%;
-  background:#00ff88;
-  transition:width .2s linear;
 }
 </style>
 </head>
@@ -143,46 +125,58 @@ input, button {
 <div id="overlay"></div>
 <button id="rematch">Rematch</button>
 <div id="rematchStatus"></div>
-
-<div id="healthUI">
-  <div class="health-label">HP</div>
-  <div class="health-bar"><div class="health-fill"></div></div>
-</div>
-
 <canvas id="game"></canvas>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-const healthFill = document.querySelector(".health-fill");
-
 canvas.width = 420;
 canvas.height = innerHeight - 20;
 
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
 let state = null;
+let prevState = null;
+let mapSel = "zeroG";
 let myPlayer = null;
 let rematchSent = false;
-let inMenu = true;
-let mapSel = "zeroG";
 
 const overlay = document.getElementById("overlay");
 const rematchBtn = document.getElementById("rematch");
 const rematchStatus = document.getElementById("rematchStatus");
 document.getElementById("homeBtn").onclick = () => location.reload();
 
-/* AUDIO */
+// ===== AUDIO =====
 const ac = new (window.AudioContext||webkitAudioContext)();
-const beep=(f,d)=>{const o=ac.createOscillator(),g=ac.createGain();
-o.frequency.value=f;g.gain.setValueAtTime(.12,ac.currentTime);
-g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);
-o.connect(g).connect(ac.destination);o.start();o.stop(ac.currentTime+d);}
-const shot=()=>beep(180,.07);
-const hit=()=>beep(320,.1);
-const win=()=>beep(520,.12);
 
-/* MENU */
+function shotSound(){
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type="square"; o.frequency.value=180;
+  g.gain.setValueAtTime(.12,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.07);
+  o.connect(g).connect(ac.destination);
+  o.start(); o.stop(ac.currentTime+.07);
+}
+
+function hitSound(){
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type="sawtooth"; o.frequency.value=320;
+  g.gain.setValueAtTime(.1,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.1);
+  o.connect(g).connect(ac.destination);
+  o.start(); o.stop(ac.currentTime+.1);
+}
+
+function winSound(){
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type="triangle"; o.frequency.value=520;
+  g.gain.setValueAtTime(.15,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.12);
+  o.connect(g).connect(ac.destination);
+  o.start(); o.stop(ac.currentTime+.12);
+}
+
+// ===== MENU =====
 function sel(m){
   mapSel=m;
   document.querySelectorAll(".map-btn").forEach(b=>b.classList.remove("active"));
@@ -195,7 +189,7 @@ function join(){
   ws.send(JSON.stringify({type:"join",room:jRoom.value}));
 }
 
-/* INPUT */
+// ===== INPUT =====
 canvas.onclick=()=>{
   if(state?.started && !state.gameOver){
     ac.resume();
@@ -211,62 +205,103 @@ rematchBtn.onclick=()=>{
   rematchStatus.innerText="Waiting for opponent…";
 };
 
-/* WS */
+// ===== WS =====
 ws.onmessage=e=>{
   const d=JSON.parse(e.data);
 
   if(d.type==="joined"){
     myPlayer=d.player;
+    document.getElementById("menu").style.display="none";
   }
 
   if(d.type==="state"){
-    const prev=state;
-    state=d.state;
+    if(state){
+      if(d.state.bullets.length>state.bullets.length) shotSound();
 
-    if(state.startAt && inMenu){
-      inMenu=false;
-      document.getElementById("menu").style.display="none";
-    }
-
-    if(prev){
-      if(state.bullets.length>prev.bullets.length) shot();
+      // detect hit (health drop)
       if(
-        state.players.blue.health<prev.players.blue.health ||
-        state.players.white.health<prev.players.white.health
-      ) hit();
-      if(!prev.gameOver && state.gameOver) win();
-    }
+        d.state.players.blue.health < state.players.blue.health ||
+        d.state.players.white.health < state.players.white.health
+      ){
+        hitSound();
+      }
 
-    if(prev && prev.gameOver && !state.gameOver){
-      rematchSent=false;
-      rematchStatus.style.display="none";
+      // detect game over
+      if(!state.gameOver && d.state.gameOver){
+        winSound();
+      }
+
+      // reset UI on new match
+      if(state.gameOver && !d.state.gameOver){
+        rematchSent=false;
+        rematchStatus.style.display="none";
+      }
     }
+    prevState=state;
+    state=d.state;
   }
 };
 
-/* DRAW */
-function bg(){
-  ctx.fillStyle="#000";
+// ===== DRAW =====
+function bg(b){
+  ctx.fillStyle=b==="space"?"#000":b==="moon"?"#222":"#111";
   ctx.fillRect(0,0,canvas.width,canvas.height);
 }
-function gun(g,c){
-  ctx.save();
-  ctx.translate(g.x,g.y);
-  ctx.rotate(g.angle);
-  ctx.fillStyle=c;
-  ctx.fillRect(-20,-8,40,16);
-  ctx.fillRect(-8,8,12,18);
-  ctx.restore();
-}
 
-function loop(){
-  if(inMenu || !state){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    requestAnimationFrame(loop);
-    return;
+function gun(g, base){
+  ctx.save();
+  ctx.translate(g.x, g.y);
+  ctx.rotate(g.angle);
+
+  const dark = base === "#ff4444" ? "#cc3333" : "#0077aa";
+  const darker = base === "#ff4444" ? "#992222" : "#005577";
+
+  // main body
+  ctx.fillStyle = base;
+  ctx.fillRect(-20, -8, 40, 16);
+
+  // slide
+  ctx.fillStyle = dark;
+  ctx.fillRect(-18, -11, 36, 6);
+
+  // barrel
+  ctx.fillStyle = darker;
+  ctx.fillRect(20, -3, 16, 6);
+
+  // muzzle hole
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.arc(36, 0, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // grip
+  ctx.fillStyle = darker;
+  ctx.fillRect(-8, 8, 12, 18);
+
+  // grip lines
+  ctx.strokeStyle = "rgba(0,0,0,0.4)";
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(-6, 10 + i * 4);
+    ctx.lineTo(2, 10 + i * 4);
+    ctx.stroke();
   }
 
-  bg();
+  // highlight
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.beginPath();
+  ctx.moveTo(-18, -6);
+  ctx.lineTo(16, -6);
+  ctx.stroke();
+
+  ctx.restore();
+  }
+
+function loop(){
+  if(!state) return requestAnimationFrame(loop);
+
+  bg(state.map.background);
+
   gun(state.players.blue,"#00aaff");
   gun(state.players.white,"#ff4444");
 
@@ -278,24 +313,13 @@ function loop(){
   });
 
   if(!state.started && !state.gameOver){
-    if(state.startAt){
-      const t=Math.ceil((state.startAt-Date.now())/1000);
-      overlay.innerText=t>0?`${state.map.name}\n${t}`:"GO!";
-    } else {
-      overlay.innerText="Waiting for opponent…";
-    }
+    const t=Math.ceil((state.startAt-Date.now())/1000);
+    overlay.innerText=t>0?`${state.map.name}\n${t}`:"GO!";
   } else overlay.innerText="";
 
   if(state.gameOver){
     overlay.innerText=state.winner===myPlayer?"YOU WIN":"YOU LOSE";
     if(!rematchSent) rematchBtn.style.display="block";
-  }
-
-  const me=state.players[myPlayer];
-  if(me){
-    const p=Math.max(0,me.health/3)*100;
-    healthFill.style.width=p+"%";
-    healthFill.style.background=p>66?"#00ff88":p>33?"#ffaa00":"#ff4444";
   }
 
   requestAnimationFrame(loop);
