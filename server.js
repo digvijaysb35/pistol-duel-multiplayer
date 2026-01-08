@@ -24,7 +24,7 @@ const ANGULAR_TRANSFER = 0.015;
 const ROTATION_DAMPING = 0.992;
 const LINEAR_DAMPING = 0.998;
 
-// ================= HEAT (LOCKED)
+// ================= HEAT
 const HEAT_PER_SHOT = 1;
 const MAX_HEAT = 6;
 const COOL_RATE = 0.04;
@@ -127,8 +127,20 @@ function createRoom(mapKey) {
     started: false,
     startAt: 0,
     gameOver: false,
-    winner: null
+    winner: null,
+    rematchReady: {}
   };
+}
+
+function resetRoom(r) {
+  r.players.blue = new Gun(90, HEIGHT - 160);
+  r.players.white = new Gun(WIDTH - 90, HEIGHT - 160);
+  r.bullets.length = 0;
+  r.started = false;
+  r.gameOver = false;
+  r.winner = null;
+  r.rematchReady = {};
+  r.startAt = Date.now() + 3000;
 }
 
 function hit(b, g) {
@@ -145,7 +157,7 @@ wss.on("connection", ws => {
       ws.room = d.room;
       ws.player = "blue";
       rooms[d.room].clients.blue = ws;
-      ws.send(JSON.stringify({ type: "joined", player: "blue" }));
+      ws.send(JSON.stringify({ type:"joined", player:"blue" }));
     }
 
     if (d.type === "join") {
@@ -154,19 +166,23 @@ wss.on("connection", ws => {
       ws.room = d.room;
       ws.player = "white";
       r.clients.white = ws;
-
-      r.started = false;
-      r.gameOver = false;
-      r.winner = null;
       r.startAt = Date.now() + 3000;
-
-      ws.send(JSON.stringify({ type: "joined", player: "white" }));
+      ws.send(JSON.stringify({ type:"joined", player:"white" }));
     }
 
     if (d.type === "shoot") {
       const r = rooms[ws.room];
       if (!r || !r.started || r.gameOver) return;
       r.players[ws.player].shoot(r.bullets, ws.player);
+    }
+
+    if (d.type === "rematch") {
+      const r = rooms[ws.room];
+      if (!r) return;
+      r.rematchReady[ws.player] = true;
+      if (r.rematchReady.blue && r.rematchReady.white) {
+        resetRoom(r);
+      }
     }
   });
 });
@@ -214,11 +230,12 @@ setInterval(() => {
       started: r.started,
       startAt: r.startAt,
       gameOver: r.gameOver,
-      winner: r.winner
+      winner: r.winner,
+      rematchReady: r.rematchReady
     };
 
     Object.values(r.clients).forEach(ws =>
-      ws.send(JSON.stringify({ type: "state", state }))
+      ws.send(JSON.stringify({ type:"state", state }))
     );
   });
 }, 1000 / 60);
