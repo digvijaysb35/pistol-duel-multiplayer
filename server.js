@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 
 // ================= PHYSICS
-const GRAVITY = 0.02;
+const GRAVITY = 0.00;
 const RECOIL_FORCE = 3.2;
 const BULLET_SPEED = 9;
 
