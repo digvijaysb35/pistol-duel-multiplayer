@@ -49,7 +49,7 @@ const ctx = canvas.getContext("2d");
 const rematchBtn = document.getElementById("rematch");
 
 canvas.width = Math.min(innerWidth - 20, 420);
-canvas.height = Math.min(innerHeight - 20, 640);
+canvas.height = innerHeight - 20; // ⬅️ FULL HEIGHT
 
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
@@ -118,7 +118,7 @@ rematchBtn.onclick = () => {
   rematchBtn.style.display = "none";
 };
 
-// ================= GUN DRAW (BLUE / RED)
+// ================= GUN DRAW
 function drawGun(g, baseColor) {
   ctx.save();
   ctx.translate(g.x, g.y);
@@ -171,13 +171,11 @@ function draw() {
     ctx.fillStyle = "#fff";
     ctx.font = "32px Arial";
     ctx.textAlign = "center";
-
     ctx.fillText(
       gameState.winner === myPlayer ? "YOU WIN" : "YOU LOSE",
       canvas.width / 2,
       canvas.height / 2
     );
-
     rematchBtn.style.display = "block";
   }
 }
