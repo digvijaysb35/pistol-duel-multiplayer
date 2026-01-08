@@ -1,192 +1,82 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Pistol Duel Multiplayer</title>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pistol Duel</title>
 <style>
-html, body {
-  margin: 0;
-  padding: 0;
-  background: #555;
-  height: 100%;
-  overflow: hidden;
-}
-
-canvas {
-  display: block;
-  margin: auto;
-  background: #000;
-  border: 6px solid #777;
-  border-radius: 14px;
-}
-
-#rematch {
-  position: absolute;
-  top: 55%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  padding: 14px 26px;
-  font-size: 20px;
-  border-radius: 8px;
-  border: none;
-  background: #00aaff;
-  color: white;
-  display: none;
-}
+body { margin:0; background:#222; overflow:hidden; }
+canvas { display:block; margin:auto; border:6px solid #777; border-radius:14px; background:#000; }
+#menu { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; }
+button { padding:12px 20px; font-size:18px; }
 </style>
 </head>
-
 <body>
 
+<div id="menu">
+  <button onclick="create('zeroG')">Create Zero-G</button>
+  <button onclick="create('moon')">Create Moon</button>
+  <button onclick="create('heavy')">Create Heavy</button>
+  <input id="room" placeholder="Room Code">
+  <button onclick="join()">Join Room</button>
+</div>
+
 <canvas id="game"></canvas>
-<button id="rematch">Rematch</button>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-const rematchBtn = document.getElementById("rematch");
-
-canvas.width = Math.min(innerWidth - 20, 420);
-canvas.height = innerHeight - 20; // ⬅️ FULL HEIGHT
+canvas.width = 420;
+canvas.height = innerHeight - 20;
 
 const ws = new WebSocket("wss://pistol-duel-multiplayer.onrender.com");
 
-let gameState = null;
-let myPlayer = null;
+let state = null;
 
-// ================= AUDIO
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-function playShot() {
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  o.type = "square";
-  o.frequency.value = 180;
-  g.gain.setValueAtTime(0.12, audioCtx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.07);
-  o.connect(g).connect(audioCtx.destination);
-  o.start();
-  o.stop(audioCtx.currentTime + 0.07);
+function create(map) {
+  const room = Math.random().toString(36).slice(2,7);
+  ws.send(JSON.stringify({ type:"create", room, map }));
+  alert("Room Code: " + room);
+  document.getElementById("menu").style.display = "none";
 }
 
-function playHit() {
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  o.type = "triangle";
-  o.frequency.value = 520;
-  g.gain.setValueAtTime(0.15, audioCtx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
-  o.connect(g).connect(audioCtx.destination);
-  o.start();
-  o.stop(audioCtx.currentTime + 0.12);
+function join() {
+  const room = document.getElementById("room").value;
+  ws.send(JSON.stringify({ type:"join", room }));
+  document.getElementById("menu").style.display = "none";
 }
 
-// ================= WEBSOCKET
-ws.onopen = () => {
-  const room = prompt("Enter room code:");
-  ws.send(JSON.stringify({ type: "join", room }));
-};
+canvas.onclick = () => ws.send(JSON.stringify({ type:"shoot" }));
 
 ws.onmessage = e => {
   const data = JSON.parse(e.data);
-
-  if (data.type === "joined") {
-    myPlayer = data.player;
-  }
-
-  if (data.type === "state") {
-    if (gameState) {
-      if (data.state.bullets.length > gameState.bullets.length) playShot();
-      if (data.state.bullets.length < gameState.bullets.length) playHit();
-    }
-    gameState = data.state;
-    if (!gameState.gameOver) rematchBtn.style.display = "none";
-  }
+  if (data.type === "state") state = data.state;
 };
 
-// ================= INPUT
-canvas.addEventListener("click", () => {
-  if (!gameState || gameState.gameOver) return;
-  audioCtx.resume();
-  ws.send(JSON.stringify({ type: "shoot" }));
-});
+function drawBG(bg) {
+  ctx.fillStyle =
+    bg === "space" ? "#000" :
+    bg === "moon" ? "#222" : "#111";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+}
 
-rematchBtn.onclick = () => {
-  ws.send(JSON.stringify({ type: "rematch" }));
-  rematchBtn.style.display = "none";
-};
-
-// ================= GUN DRAW
-function drawGun(g, baseColor) {
-  ctx.save();
-  ctx.translate(g.x, g.y);
-  ctx.rotate(g.angle);
-
-  const dark = baseColor === "#ff4444" ? "#cc3333" : "#0077aa";
-  const darker = baseColor === "#ff4444" ? "#992222" : "#005577";
-
-  ctx.fillStyle = baseColor;
-  ctx.fillRect(-20, -8, 40, 16);
-  ctx.fillStyle = dark;
-  ctx.fillRect(-18, -11, 36, 6);
-  ctx.fillStyle = darker;
-  ctx.fillRect(20, -3, 16, 6);
-  ctx.fillStyle = darker;
-  ctx.fillRect(-8, 8, 12, 18);
-
+function drawGun(g,c){
+  ctx.save(); ctx.translate(g.x,g.y); ctx.rotate(g.angle);
+  ctx.fillStyle=c; ctx.fillRect(-20,-8,40,16);
   ctx.restore();
 }
 
-// ================= SIMPLE BULLET
-function drawBullet(b) {
-  ctx.fillStyle = b.owner === "blue" ? "#00aaff" : "#ff4444";
-  ctx.beginPath();
-  ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-// ================= DRAW LOOP
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  if (!gameState) {
-    ctx.fillStyle = "#fff";
-    ctx.font = "20px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("Waiting for player…", canvas.width / 2, canvas.height / 2);
-    return;
-  }
-
-  drawGun(gameState.players.blue, "#00aaff");
-  drawGun(gameState.players.white, "#ff4444");
-
-  gameState.bullets.forEach(drawBullet);
-
-  if (gameState.gameOver) {
-    ctx.fillStyle = "rgba(0,0,0,0.75)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "32px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(
-      gameState.winner === myPlayer ? "YOU WIN" : "YOU LOSE",
-      canvas.width / 2,
-      canvas.height / 2
-    );
-    rematchBtn.style.display = "block";
-  }
-}
-
-function loop() {
-  draw();
+function loop(){
+  if (!state) return requestAnimationFrame(loop);
+  drawBG(state.map.background);
+  drawGun(state.players.blue,"#00aaff");
+  drawGun(state.players.white,"#ff4444");
+  state.bullets.forEach(b=>{
+    ctx.fillStyle=b.owner==="blue"?"#00aaff":"#ff4444";
+    ctx.beginPath(); ctx.arc(b.x,b.y,3,0,Math.PI*2); ctx.fill();
+  });
   requestAnimationFrame(loop);
 }
-
 loop();
 </script>
-
 </body>
 </html>
