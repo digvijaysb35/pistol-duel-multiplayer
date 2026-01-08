@@ -13,7 +13,7 @@ app.use(express.static("public"));
 const MAPS = {
   zeroG: { name: "Zero-G Arena", gravity: 0, background: "space" },
   moon:  { name: "Moon Base", gravity: 0.02, background: "moon" },
-  ocean: { name: "Ocean Arena", gravity: 0.02, background: "ocean" }
+  ocean: { name: "Ocean Arena", gravity: 0.04, background: "ocean" }
 };
 
 // ================= PHYSICS
