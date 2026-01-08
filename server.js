@@ -13,7 +13,7 @@ app.use(express.static("public"));
 const MAPS = {
   zeroG: { name: "Zero-G Arena", gravity: 0, background: "space" },
   moon:  { name: "Moon Base", gravity: 0.02, background: "moon" },
-  heavy: { name: "Heavy Factory", gravity: 0.05, background: "factory" }
+  earth: { name: "Earth Arena", gravity: 0.05, background: "earth" }
 };
 
 // ================= PHYSICS
@@ -23,6 +23,9 @@ const WALL_RESTITUTION = 0.85;
 const ANGULAR_TRANSFER = 0.015;
 const ROTATION_DAMPING = 0.992;
 const LINEAR_DAMPING = 0.998;
+
+// ================= HEALTH
+const MAX_HEALTH = 3;
 
 // ================= HEAT
 const HEAT_PER_SHOT = 1;
@@ -37,11 +40,16 @@ const HEIGHT = 800;
 // ================= GUN
 class Gun {
   constructor(x, y) {
-    this.x = x; this.y = y;
-    this.vx = 0; this.vy = 0;
+    this.x = x;
+    this.y = y;
+    this.vx = 0;
+    this.vy = 0;
     this.angle = Math.random() * Math.PI * 2;
     this.av = 0;
     this.radius = 20;
+
+    this.health = MAX_HEALTH;
+
     this.heat = 0;
     this.overheated = false;
     this.overheatUntil = 0;
@@ -59,6 +67,7 @@ class Gun {
 
   shoot(bullets, owner) {
     if (!this.canShoot()) return;
+
     const a = this.angle;
 
     bullets.push({
@@ -204,17 +213,27 @@ setInterval(() => {
         b.y += b.vy;
 
         if (b.owner !== "blue" && hit(b, r.players.blue)) {
-          r.gameOver = true;
-          r.started = false;
-          r.winner = "white";
-          r.bullets.length = 0;
+          r.players.blue.health--;
+          r.bullets.splice(i, 1);
+
+          if (r.players.blue.health <= 0) {
+            r.gameOver = true;
+            r.started = false;
+            r.winner = "white";
+            r.bullets.length = 0;
+          }
         }
 
         if (b.owner !== "white" && hit(b, r.players.white)) {
-          r.gameOver = true;
-          r.started = false;
-          r.winner = "blue";
-          r.bullets.length = 0;
+          r.players.white.health--;
+          r.bullets.splice(i, 1);
+
+          if (r.players.white.health <= 0) {
+            r.gameOver = true;
+            r.started = false;
+            r.winner = "blue";
+            r.bullets.length = 0;
+          }
         }
 
         if (b.x < 0 || b.x > WIDTH || b.y < 0 || b.y > HEIGHT) {
