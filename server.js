@@ -17,7 +17,7 @@ const MAPS = {
 };
 
 // ================= PHYSICS
-const RECOIL_FORCE = 3.2;
+const RECOIL_FORCE = 4;
 const BULLET_SPEED = 9;
 const WALL_RESTITUTION = 0.85;
 const ANGULAR_TRANSFER = 0.015;
